@@ -18,21 +18,22 @@ function reorder_array(&$array, $new_order)
 
 
 
-// get access token via refreshtoken
+// import ENV Variables
 
 $refresh_token = getenv('REFRESH_TOKEN');
 $client_id =  getenv('CLIENT_ID');
 $client_secret = getenv('CLIENT_SECRET');
+$openweathermap_appid = getenv('OPENWEATHERMAP_APPID');
 
-# echo "$refresh_token $client_id $client_secret" ;
 
+// refresh access token
 $api_url	= "https://api.netatmo.com/oauth2/token";
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(array(
-'grant_type' => 'refresh_token',
-'refresh_token' => $refresh_token,
-'client_id' => $client_id,
-'client_secret' => $client_secret,
+	'grant_type' => 'refresh_token',
+	'refresh_token' => $refresh_token,
+	'client_id' => $client_id,
+	'client_secret' => $client_secret,
 )));
 curl_setopt($ch, CURLOPT_URL, $api_url);
 curl_setopt($ch, CURLOPT_HEADER, false);
@@ -42,56 +43,44 @@ curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $result = curl_exec($ch);
 
 curl_close($ch);
-$json=json_decode($result, true);
+$json = json_decode($result, true);
 
 $access_token = $json["access_token"];
 
-// Zugangsdaten Netatmo
 
 
+// set common header for Netatmo API GET requests
+// see details https://dev.netatmo.com/apidocumentation/oauth
 $headers = array(
 	"Content-Type: application/json",
 	"Authorization: Bearer " . $access_token
 );
 
 
-// Anfrage mit Bearer Token
-
-$params		= null;
-$params		= json_decode($response, true);
+// Request registered devices 
 $api_url	= "https://api.netatmo.net/api/devicelist";
-
-
-// Daten abrufen
-
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $api_url);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-$array = curl_exec($ch);
+$response = curl_exec($ch);
 curl_close($ch);
-
-
 
 
 // Messwerte bereitstellen
 
-$netatmo = json_decode($array, true);
+$netatmo = json_decode($response, true);
 $modules = array();
 
 $dt = new DateTime();
 
 
 //=====================================================
-//Graph erzeugen	
+//Create graph
 $end = time();
 $begin =  time() - 21600;
 
-//echo $time;
 
-
-$params		     = null;
-$params	         = json_decode($response, true);
 $device_id       = getenv('DEVICE_ID');
 $outdoormoduleID = getenv('OUTDOOMODULE_ID');
 $api_url	= "https://api.netatmo.net/api/getmeasure" .
@@ -109,11 +98,11 @@ $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $api_url);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-$array = curl_exec($ch);
+$response = curl_exec($ch);
 curl_close($ch);
 
 // Messwerte bereitstellen
-$netatmolast6h	= json_decode($array, true);
+$netatmolast6h	= json_decode($response, true);
 
 $ydata = array(
 	$netatmolast6h["body"][0]["value"][0][0],
@@ -201,25 +190,26 @@ $g->Add($lplot);
 
 $g->Stroke('6h.png');
 
+
 //=====================================================	
 
+// Values for each seperate module can be NAModule1(Outdoor) and NAModule4(Indoor)
 for ($i = 0; $i < sizeof($netatmo["body"]["modules"]); $i++) {
 	$name			= $netatmo["body"]["modules"][$i]["module_name"];
 	$battery_vp		= $netatmo["body"]["modules"][$i]["battery_vp"];
 	$rf_status		= $netatmo["body"]["modules"][$i]["rf_status"];
 	$temp			= number_format($netatmo["body"]["modules"][$i]["dashboard_data"]["Temperature"], 1, ".", "");
 	$temp_trend		= $netatmo["body"]["modules"][$i]["dashboard_data"]["temp_trend"];
+	$co2            = $netatmo["body"]["modules"][$i]["type"] == "NAModule4" ? $netatmo["body"]["modules"][$i]["dashboard_data"]["CO2"]	: "";
 	$humidity		= $netatmo["body"]["modules"][$i]["dashboard_data"]["Humidity"];
-	$co2			= $netatmo["body"]["modules"][$i]["dashboard_data"]["CO2"];
 	$min_temp		= number_format($netatmo["body"]["modules"][$i]["dashboard_data"]["min_temp"], 1, ".", "");
 	$min_time		= $dt->setTimestamp($netatmo["body"]["modules"][$i]["dashboard_data"]["date_min_temp"])->format('H:i');
 	$max_temp		= number_format($netatmo["body"]["modules"][$i]["dashboard_data"]["max_temp"], 1, ".", "");
 	$max_time		= $dt->setTimestamp($netatmo["body"]["modules"][$i]["dashboard_data"]["date_max_temp"])->format('H:i');
 	$measure_time 	= $dt->setTimestamp($netatmo["body"]["modules"][$i]["dashboard_data"]["time_utc"])->format('H:i');
 
-	$battery_status = "full";
-	if ($netatmo["body"]["modules"][$i]["type"] = "NAModule1") {  //outdoor
-
+	$battery_status = "full"; //inital battery is state is full
+	if ($netatmo["body"]["modules"][$i]["type"] == "NAModule1") {  //outdoor uses different batt values
 		if ($battery_vp < 5000 and $battery_vp > 4500) {
 			$battery_status = "half";
 		} elseif ($battery_vp <= 4500 and $battery_vp > 4000) {
@@ -228,7 +218,6 @@ for ($i = 0; $i < sizeof($netatmo["body"]["modules"]); $i++) {
 			$battery_status = "empty";
 		}
 	} else {  //indoor
-
 		if ($battery_vp < 5280 and $battery_vp > 4920) {
 			$battery_status = "half";
 		} elseif ($battery_vp <= 4920 and $battery_vp > 4560) {
@@ -255,7 +244,9 @@ for ($i = 0; $i < sizeof($netatmo["body"]["modules"]); $i++) {
 
 	array_push($modules, $t_array);
 }
+print_r($modules);
 
+//Base module values
 $base_name			= $netatmo["body"]["devices"]["0"]["module_name"];
 $base_calibrating	= $netatmo["body"]["devices"]["0"]["co2_calibrating"];
 $base_wifi_status	= $netatmo["body"]["devices"]["0"]["wifi_status"];
@@ -303,7 +294,7 @@ $modules = $modulessorted;
 
 //print_r($modules);
 
-$url = "http://api.openweathermap.org/data/2.5/weather?id=6940468&lang=en&units=metric&APPID=951ffbd4db78f3909777ee2c0431da5e";
+$url = "http://api.openweathermap.org/data/2.5/weather?id=6940468&lang=en&units=metric&APPID=" . $openweathermap_appid;
 
 $contents = file_get_contents($url);
 $clima = json_decode($contents);
@@ -357,7 +348,7 @@ $conditionmapping = array(
 $filename	= "weather-script-output.png";
 $font_text_m = "Asap-Medium.ttf";
 $font_text_b = "Asap-Bold.ttf";
-$font_symbol		= "WeatherIcons-fixed.ttf";
+$font_symbol = "WeatherIcons-fixed.ttf";
 
 
 // Leere PNG-Datei mit weißem Hintergrund erstellen
@@ -453,8 +444,7 @@ ImageTTFText($image, 15, 0, 149, 270 + 5, $color_grey2, $font_text_m, "Feuchtigk
 ImageTTFText($image, 20, 0, 266 + 15, 30, $color_black, $font_text_m, "Temperaturverlauf 6h");
 
 
-// Dte and time
-
+// Date and time
 date_default_timezone_set('Europe/Berlin');
 $date = new DateTime();
 ImageTTFText($image, 20, 0, 2 * 266 + 80, 30, $color_black, $font_text_m, "Messung vom:");
@@ -521,12 +511,12 @@ for ($i = 0; $i < 3; $i++) {
 
 
 
-// getting 3 days forecast
+// TODO: getting 3 days forecast for openweathermap
 
-$url = "http://api.openweathermap.org/data/2.5/forecast?id=6940468&cnt=24&lang=en&units=metric&APPID=951ffbd4db78f3909777ee2c0431da5e";
+//$url = "http://api.openweathermap.org/data/2.5/forecast?id=6940468&cnt=24&lang=en&units=metric&APPID=951ffbd4db78f3909777ee2c0431da5e";
 
-$contents = file_get_contents($url);
-$clima = json_decode($contents);
+//$contents = file_get_contents($url);
+//$clima = json_decode($contents);
 
 //$icon=$clima->weather[0]->icon;
 //print_r($clima);
