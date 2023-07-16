@@ -6,9 +6,6 @@ require_once('/var/www/html/jpgraph-4.4.1/src/jpgraph_scatter.php');
 require_once('/var/www/html/jpgraph-4.4.1/src/jpgraph_regstat.php');
 date_default_timezone_set('Europe/Berlin');
 
-DEFINE("TTF_DIR", "/var/www/html/");
-
-header('Content-Type: text/html; charset=UTF-8');
 
 
 function reorder_array(&$array, $new_order)
@@ -19,13 +16,42 @@ function reorder_array(&$array, $new_order)
 	});
 }
 
+
+
+// get access token via refreshtoken
+
+$refresh_token = getenv('REFRESH_TOKEN');
+$client_id =  getenv('CLIENT_ID');
+$client_secret = getenv('CLIENT_SECRET');
+
+# echo "$refresh_token $client_id $client_secret" ;
+
+$api_url	= "https://api.netatmo.com/oauth2/token";
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(array(
+'grant_type' => 'refresh_token',
+'refresh_token' => $refresh_token,
+'client_id' => $client_id,
+'client_secret' => $client_secret,
+)));
+curl_setopt($ch, CURLOPT_URL, $api_url);
+curl_setopt($ch, CURLOPT_HEADER, false);
+curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+$result = curl_exec($ch);
+
+curl_close($ch);
+$json=json_decode($result, true);
+
+$access_token = $json["access_token"];
+
 // Zugangsdaten Netatmo
 
-$bearertoken = getenv('BEARER_TOKEN');
 
 $headers = array(
 	"Content-Type: application/json",
-	"Authorization: Bearer " . $bearertoken
+	"Authorization: Bearer " . $access_token
 );
 
 
@@ -42,7 +68,6 @@ $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $api_url);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-#print_r($ch);
 $array = curl_exec($ch);
 curl_close($ch);
 
@@ -85,7 +110,6 @@ curl_setopt($ch, CURLOPT_URL, $api_url);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $array = curl_exec($ch);
-#print_r($ch);
 curl_close($ch);
 
 // Messwerte bereitstellen
