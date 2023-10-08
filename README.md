@@ -10,3 +10,30 @@ Build is triggered via the docker-compose file.
 
 ## Env Variables
 see docker compose file
+
+## docker-compose
+```docker-compose
+---
+version: '2.4'
+
+services:
+  app_weather:
+    build:
+      context: .
+      dockerfile: Dockerfile 
+    container_name: app_weather
+    restart: unless-stopped
+    volumes:
+      - /volume3/docker/weather/weather:/var/www/html:rw
+    ports:
+      - 81:8080
+    environment:
+      - REFRESH_TOKEN=XXXXXXXXXXXXXXXXXXXXXXXX|XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      - CLIENT_ID=XXXXXXXXXXXXXXXXXXXXXXXX
+      - CLIENT_SECRET=XXXXXXXXXXXXXXX
+      - DEVICE_ID=XX:XX:XX:XX:XX:XX
+      - OUTDOOMODULE_ID=XX:XX:XX:XX:XX:XX
+      - OPENWEATHERMAP_APPID=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX 
+    mem_limit: 128M
+    mem_reservation: 64M
+```
