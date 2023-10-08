@@ -18,12 +18,14 @@ function reorder_array(&$array, $new_order)
 
 
 
-// import ENV Variables
+// import ENV Variables for Netatmo API
+// requires an initial setting of access and refresh token on your app settings in netatmo
+// from that point on the refresh token can be used to generate access tokens
 
 $refresh_token = getenv('REFRESH_TOKEN');
 $client_id =  getenv('CLIENT_ID');
 $client_secret = getenv('CLIENT_SECRET');
-$openweathermap_appid = getenv('OPENWEATHERMAP_APPID');
+
 
 
 // refresh access token
@@ -57,7 +59,7 @@ $headers = array(
 );
 
 
-// Request registered devices 
+// Request registered devices and current sensor data
 $api_url	= "https://api.netatmo.net/api/devicelist";
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $api_url);
@@ -77,6 +79,7 @@ $dt = new DateTime();
 
 //=====================================================
 //Create graph
+//Call netatmo API to get data outdoor data from the last 6h
 $end = time();
 $begin =  time() - 21600;
 
@@ -208,7 +211,7 @@ for ($i = 0; $i < sizeof($netatmo["body"]["modules"]); $i++) {
 	$max_time		= $dt->setTimestamp($netatmo["body"]["modules"][$i]["dashboard_data"]["date_max_temp"])->format('H:i');
 	$measure_time 	= $dt->setTimestamp($netatmo["body"]["modules"][$i]["dashboard_data"]["time_utc"])->format('H:i');
 
-	$battery_status = "full"; //inital battery is state is full
+	$battery_status = "full"; 
 	if ($netatmo["body"]["modules"][$i]["type"] == "NAModule1") {  //outdoor uses different batt values
 		if ($battery_vp < 5000 and $battery_vp > 4500) {
 			$battery_status = "half";
@@ -291,9 +294,11 @@ foreach ($modules as $key => $value) {
 
 $modules = $modulessorted;
 
+// Get current weather state (sunny, cloudy, rain, etc.) from openweathermap
+// Requires an appid from openweathermap
+// Netatmo does not supply this information
 
-//print_r($modules);
-
+$openweathermap_appid = getenv('OPENWEATHERMAP_APPID');
 $url = "http://api.openweathermap.org/data/2.5/weather?id=6940468&lang=en&units=metric&APPID=" . $openweathermap_appid;
 
 $contents = file_get_contents($url);
@@ -343,7 +348,7 @@ $conditionmapping = array(
 
 
 
-// Variablen
+// Filename defintion and Font names
 
 $filename	= "weather-script-output.png";
 $font_text_m = "Asap-Medium.ttf";
@@ -351,9 +356,9 @@ $font_text_b = "Asap-Bold.ttf";
 $font_symbol = "WeatherIcons-fixed.ttf";
 
 
-// Leere PNG-Datei mit weißem Hintergrund erstellen
+// Create empty PNG 
 
-$image		= ImageCreateTrueColor(800, 600);
+$image		        = ImageCreateTrueColor(800, 600);
 $background_white	= ImageColorAllocate($image, 255, 255, 255);
 $background_black	= ImageColorAllocate($image, 0, 0, 0);
 
@@ -361,13 +366,14 @@ ImageFilledRectangle($image, 0, 0, 800, 300, $background_white);
 ImageFilledRectangle($image, 401, 301, 800, 600, $background_black);
 
 
-// Farbe für Schrift und Hilfslinien festlegen
+// Set colors for font and lines
 
 $color_black		= ImageColorAllocate($image, 0, 0, 0);
 $color_white		= ImageColorAllocate($image, 255, 255, 255);
-$color_grey		= ImageColorAllocate($image, 200, 200, 200);
+$color_grey		    = ImageColorAllocate($image, 200, 200, 200);
 $color_grey2		= ImageColorAllocate($image, 100, 100, 100);
-// Text einfügen
+
+// Adding texts
 
 //                 size|an| X | Y                                   
 
@@ -511,7 +517,7 @@ for ($i = 0; $i < 3; $i++) {
 
 
 
-// TODO: getting 3 days forecast for openweathermap
+// TODO: Add new tile to show 3 days forecast for openweathermap
 
 //$url = "http://api.openweathermap.org/data/2.5/forecast?id=6940468&cnt=24&lang=en&units=metric&APPID=951ffbd4db78f3909777ee2c0431da5e";
 
@@ -525,7 +531,7 @@ for ($i = 0; $i < 3; $i++) {
 
 
 
-// Hilfslinien einfügen
+// Helper lines for design
 /*
 	ImageFilledRectangle($image, 266, 0, 267, 600, $color_black);
 	ImageFilledRectangle($image, 533, 0, 534, 600, $color_black);
@@ -550,17 +556,15 @@ for ($i = 0; $i < 3; $i++) {
 	}
 */
 
-// PNG-erstellen und temporäre Daten löschen
+// Create PNG and remove temp files
 
 
 $graph = imagecreatefrompng('6h.png');
-
 
 imagecopymerge($image, $graph, 266, 50, 0, 0, 266, 250, 100);
 
 
 imagedestroy($graph);
-
 
 $image = imagerotate($image, 90, 0);
 
@@ -568,10 +572,5 @@ ImagePNG($image, $filename);
 ImageDestroy($image);
 
 
-// Farbraum in Graustufen ändern
-
-//	$im = new Imagick();
-//	$im->readImage($filename);
-//	$im->setImageType(Imagick::IMGTYPE_GRAYSCALE);
-//	$im->writeImage($filename);
+// Set image to grayscale
 shell_exec('convert weather-script-output.png   -colorspace LinearGray weather-script-output.png ');
