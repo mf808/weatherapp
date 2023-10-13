@@ -4,6 +4,8 @@
 Dockerfile only creates a base image that mounts the weather folder and runs the php script.  
 This allows immediate changes and does not require a new build everytime the php code is changed.
 
+## Issues
+If only the old version of output.png is refreshed, reason could be the pngs are write protected. To fix remove the 6h.png and weather-script-output.png and rerun. 
 
 ## Build
 Build is triggered via the docker-compose file.
