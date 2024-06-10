@@ -7,49 +7,145 @@ require_once('/var/www/html/jpgraph-4.4.1/src/jpgraph_regstat.php');
 date_default_timezone_set('Europe/Berlin');
 
 
-
-function reorder_array(&$array, $new_order)
+/**
+ * Reorders an associative array based on a new order provided.
+ *
+ * @param array &$array The array to reorder. This array is passed by reference and will be modified.
+ * @param array $new_order An array containing the new order of keys.
+ * @return void
+ */
+function reorder_array(array &$array, array $new_order): void
 {
-	$inverted = array_flip($new_order);
-	uksort($array, function ($a, $b) use ($inverted) {
-		return $inverted[$a] > $inverted[$b];
-	});
+    // Create a mapping of the new order for quick lookup
+    $order_map = array_flip($new_order);
+
+    // Use uksort to reorder the array based on the new order
+    uksort($array, function ($a, $b) use ($order_map) {
+        return $order_map[$a] <=> $order_map[$b];
+    });
+}
+
+/**
+ * Reads a JSON file and returns the decoded JSON object.
+ *
+ * @param string $filePath The path to the JSON file.
+ * @param bool $assoc When true, returned objects will be converted into associative arrays.
+ *                    When false, returned objects will be standard class objects.
+ * @return mixed The decoded JSON data, or null if the file does not contain valid JSON.
+ */
+function readJsonFile($filePath, $assoc = true) {
+    // Check if the file exists
+    if (!file_exists($filePath)) {
+        throw new Exception("File not found: $filePath");
+    }
+    
+    // Read the JSON file
+    $jsonString = file_get_contents($filePath);
+    
+    // Decode the JSON string into a PHP array or object
+    $data = json_decode($jsonString, $assoc);
+    
+    // Check for JSON decoding errors
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        throw new Exception('Error decoding JSON: ' . json_last_error_msg());
+    }
+    
+    return $data;
+}
+
+/**
+ * Saves a JSON object to a specified file.
+ *
+ * @param array $jsonObject The JSON object to save.
+ * @param string $filePath The path to the file where the JSON should be saved.
+ * @return bool Returns true on success, false on failure.
+ */
+function saveJsonToFile(array $jsonObject, string $filePath): bool {
+    // Encode the JSON object to a JSON string
+    $jsonString = json_encode($jsonObject, JSON_PRETTY_PRINT);
+    
+    // Check if encoding to JSON was successful
+    if ($jsonString === false) {
+        error_log('Failed to encode data to JSON: ' . json_last_error_msg());
+        return false;
+    }
+    
+    // Write the JSON string to the specified file
+    $result = file_put_contents($filePath, $jsonString);
+    
+    // Check if writing to the file was successful
+    if ($result === false) {
+        error_log('Failed to write JSON data to file: ' . $filePath);
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * Refreshes the tokens in a JSON file by making a CURL call to the specified API URL.
+ *
+ * @param string $filePath The path to the JSON file.
+ * @param string $api_url The URL of the API to call for refreshing tokens.
+ * @param string $client_id The client ID for the API.
+ * @param string $client_secret The client secret for the API.
+ * @return void
+ */
+function refresh_tokens($filePath, $api_url, $client_id, $client_secret) {
+    try {
+        // Read the JSON data from the file
+        $data = readJsonFile($filePath, true);
+
+        // Extract tokens from the data
+        $refresh_token = $data["refresh_token"];
+
+        // Perform CURL call to refresh tokens
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(array(
+            'grant_type' => 'refresh_token',
+            'refresh_token' => $refresh_token,
+            'client_id' => $client_id,
+            'client_secret' => $client_secret,
+        )));
+        curl_setopt($ch, CURLOPT_URL, $api_url);
+        curl_setopt($ch, CURLOPT_HEADER, false);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    
+        $result = curl_exec($ch);
+    
+        curl_close($ch);
+        $json = json_decode($result, true);
+    
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('Error decoding JSON from API response: ' . json_last_error_msg());
+        }
+
+        // Update tokens in the data
+        $data["access_token"] = $json["access_token"];
+        $data["refresh_token"] = $json["refresh_token"];
+
+        // Save the updated data back to the file
+        if (!saveJsonToFile($data, $filePath)) {
+            throw new Exception('Failed to save updated JSON data to file.');
+        }
+
+        echo "File updated successfully.";
+    } catch (Exception $e) {
+        echo 'Error: ' . $e->getMessage();
+    }
 }
 
 
-
-// import ENV Variables for Netatmo API
-// requires an initial setting of access and refresh token on your app settings in netatmo
-// from that point on the refresh token can be used to generate access tokens
-
-$refresh_token = getenv('REFRESH_TOKEN');
-$client_id =  getenv('CLIENT_ID');
+$filePath = 'creds.json';
+$api_url	= "https://api.netatmo.com/oauth2/token";
+$client_id = getenv('CLIENT_ID');
 $client_secret = getenv('CLIENT_SECRET');
 
+refresh_tokens($filePath, $api_url, $client_id, $client_secret);
 
-
-// refresh access token
-$api_url	= "https://api.netatmo.com/oauth2/token";
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(array(
-	'grant_type' => 'refresh_token',
-	'refresh_token' => $refresh_token,
-	'client_id' => $client_id,
-	'client_secret' => $client_secret,
-)));
-curl_setopt($ch, CURLOPT_URL, $api_url);
-curl_setopt($ch, CURLOPT_HEADER, false);
-curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-
-$result = curl_exec($ch);
-
-curl_close($ch);
-$json = json_decode($result, true);
-
-$access_token = $json["access_token"];
-
-
+$data = readJsonFile($filePath, true);
+$access_token=$data["access_token"];
 
 // set common header for Netatmo API GET requests
 // see details https://dev.netatmo.com/apidocumentation/oauth
