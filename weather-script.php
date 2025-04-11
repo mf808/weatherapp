@@ -183,10 +183,11 @@ $begin =  time() - 21600;
 $device_id       = getenv('DEVICE_ID');
 $outdoormoduleID = getenv('OUTDOOMODULE_ID');
 $api_url	= "https://api.netatmo.net/api/getmeasure" .
-	"&device_id=" . $device_id .
+	"?device_id=" . $device_id .
 	"&module_id=" . $outdoormoduleID .
 	"&scale=1hour" .
 	"&type=temperature" .
+	"&limit=6" .
 	"&date_begin=" . $begin   .
 	"&date_end=" . $end;
 
