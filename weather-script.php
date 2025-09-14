@@ -1,11 +1,11 @@
 ﻿<?php
 
+
 require_once('/var/www/html/jpgraph-4.4.1/src/jpgraph.php');
 require_once('/var/www/html/jpgraph-4.4.1/src/jpgraph_line.php');
 require_once('/var/www/html/jpgraph-4.4.1/src/jpgraph_scatter.php');
 require_once('/var/www/html/jpgraph-4.4.1/src/jpgraph_regstat.php');
 date_default_timezone_set('Europe/Berlin');
-
 
 /**
  * Reorders an associative array based on a new order provided.
@@ -136,7 +136,6 @@ function refresh_tokens($filePath, $api_url, $client_id, $client_secret) {
     }
 }
 
-
 $filePath = 'creds.json';
 $api_url	= "https://api.netatmo.com/oauth2/token";
 $client_id = getenv('CLIENT_ID');
@@ -147,6 +146,7 @@ refresh_tokens($filePath, $api_url, $client_id, $client_secret);
 $data = readJsonFile($filePath, true);
 $access_token=$data["access_token"];
 
+
 // set common header for Netatmo API GET requests
 // see details https://dev.netatmo.com/apidocumentation/oauth
 $headers = array(
@@ -154,16 +154,14 @@ $headers = array(
 	"Authorization: Bearer " . $access_token
 );
 
-
 // Request registered devices and current sensor data
-$api_url	= "https://api.netatmo.net/api/devicelist";
+$api_url	= "https://api.netatmo.com/api/devicelist";
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $api_url);
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $response = curl_exec($ch);
 curl_close($ch);
-
 
 // Messwerte bereitstellen
 
@@ -182,7 +180,7 @@ $begin =  time() - 21600;
 
 $device_id       = getenv('DEVICE_ID');
 $outdoormoduleID = getenv('OUTDOOMODULE_ID');
-$api_url	= "https://api.netatmo.net/api/getmeasure" .
+$api_url	= "https://api.netatmo.com/api/getmeasure" .
 	"?device_id=" . $device_id .
 	"&module_id=" . $outdoormoduleID .
 	"&scale=1hour" .
