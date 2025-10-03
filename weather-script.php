@@ -95,44 +95,57 @@ function refresh_tokens($filePath, $api_url, $client_id, $client_secret) {
     try {
         // Read the JSON data from the file
         $data = readJsonFile($filePath, true);
-
-        // Extract tokens from the data
         $refresh_token = $data["refresh_token"];
 
-        // Perform CURL call to refresh tokens
+        // Initialize CURL
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(array(
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
             'grant_type' => 'refresh_token',
             'refresh_token' => $refresh_token,
             'client_id' => $client_id,
             'client_secret' => $client_secret,
-        )));
+        ]));
         curl_setopt($ch, CURLOPT_URL, $api_url);
         curl_setopt($ch, CURLOPT_HEADER, false);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10); // timeout if network fails
+
         $result = curl_exec($ch);
-    
+        $curl_error = curl_error($ch);
+        $http_status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
+
+        // Check for network errors
+        if ($result === false || !empty($curl_error)) {
+            throw new Exception('Network error while refreshing token: ' . $curl_error);
+        }
+
+        if ($http_status !== 200) {
+            throw new Exception("API returned HTTP status $http_status. Aborting token refresh.");
+        }
+
+        // Decode the JSON from API
         $json = json_decode($result, true);
-    
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new Exception('Error decoding JSON from API response: ' . json_last_error_msg());
         }
 
-        // Update tokens in the data
-        $data["access_token"] = $json["access_token"];
-        $data["refresh_token"] = $json["refresh_token"];
+        // Check that required keys exist before writing
+        if (empty($json["access_token"]) || empty($json["refresh_token"])) {
+            throw new Exception('API did not return valid tokens. Aborting.');
+        }
 
-        // Save the updated data back to the file
-        if (!saveJsonToFile($data, $filePath)) {
+        // Save updated tokens
+        if (!saveJsonToFile($json, $filePath)) {
             throw new Exception('Failed to save updated JSON data to file.');
         }
 
         echo "File updated successfully.";
+
     } catch (Exception $e) {
-        echo 'Error: ' . $e->getMessage();
+        // Stop execution if network/API failed
+        die('Error: ' . $e->getMessage());
     }
 }
 
@@ -297,7 +310,7 @@ for ($i = 0; $i < sizeof($netatmo["body"]["modules"]); $i++) {
 	$battery_vp		= $netatmo["body"]["modules"][$i]["battery_vp"];
 	$rf_status		= $netatmo["body"]["modules"][$i]["rf_status"];
 	$temp			= number_format($netatmo["body"]["modules"][$i]["dashboard_data"]["Temperature"], 1, ".", "");
-	$temp_trend		= $netatmo["body"]["modules"][$i]["dashboard_data"]["temp_trend"];
+	$temp_trend		= $netatmo["body"]["modules"][$i]["dashboard_data"]["temp_trend"] ?? null;
 	$co2            = $netatmo["body"]["modules"][$i]["type"] == "NAModule4" ? $netatmo["body"]["modules"][$i]["dashboard_data"]["CO2"]	: "";
 	$humidity		= $netatmo["body"]["modules"][$i]["dashboard_data"]["Humidity"];
 	$min_temp		= number_format($netatmo["body"]["modules"][$i]["dashboard_data"]["min_temp"], 1, ".", "");
@@ -394,7 +407,7 @@ $modules = $modulessorted;
 // Netatmo does not supply this information
 
 $openweathermap_appid = getenv('OPENWEATHERMAP_APPID');
-$url = "http://api.openweathermap.org/data/2.5/weather?id=6940468&lang=en&units=metric&APPID=" . $openweathermap_appid;
+$url = "https://api.openweathermap.org/data/2.5/weather?id=6940468&lang=en&units=metric&APPID=" . $openweathermap_appid;
 
 $contents = file_get_contents($url);
 $clima = json_decode($contents);
@@ -614,7 +627,7 @@ for ($i = 0; $i < 3; $i++) {
 
 // TODO: Add new tile to show 3 days forecast for openweathermap
 
-//$url = "http://api.openweathermap.org/data/2.5/forecast?id=6940468&cnt=24&lang=en&units=metric&APPID=951ffbd4db78f3909777ee2c0431da5e";
+//$url = "https://api.openweathermap.org/data/2.5/forecast?id=6940468&cnt=24&lang=en&units=metric&APPID=951ffbd4db78f3909777ee2c0431da5e";
 
 //$contents = file_get_contents($url);
 //$clima = json_decode($contents);
@@ -668,4 +681,4 @@ ImageDestroy($image);
 
 
 // Set image to grayscale
-shell_exec('convert weather-script-output.png   -colorspace LinearGray weather-script-output.png ');
+shell_exec('magick  weather-script-output.png   -colorspace LinearGray weather-script-output.png ');
