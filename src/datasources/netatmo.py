@@ -71,8 +71,11 @@ class NetatmoSource(DataSource):
 
         file_mode = os.stat(self.creds_file).st_mode
         if file_mode & (stat.S_IRGRP | stat.S_IROTH):
-            log.warning("Credentials file %s is readable by group/others. Fixing permissions.", self.creds_file)
-            os.chmod(self.creds_file, CREDS_FILE_MODE)
+            try:
+                os.chmod(self.creds_file, CREDS_FILE_MODE)
+                log.info("Fixed credentials file permissions to 0600.")
+            except OSError:
+                log.warning("Credentials file %s is readable by group/others but chmod failed (mounted volume?).", self.creds_file)
 
         with open(self.creds_file) as f:
             creds = json.load(f)
