@@ -18,8 +18,8 @@ def load_battery_icon(icons_dir: str, status: str, size: int = 32, invert: bool 
 
 
 def apply_grayscale(image: Image.Image) -> Image.Image:
-    """Convert image to grayscale."""
-    return image.convert("L").convert("RGB")
+    """Convert image to 8-bit grayscale (mode L) for e-ink displays."""
+    return image.convert("L")
 
 
 def apply_rotation(image: Image.Image, degrees: int) -> Image.Image:
