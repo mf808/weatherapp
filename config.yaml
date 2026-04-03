@@ -23,6 +23,7 @@ timezone: Europe/Berlin
 fonts_dir: fonts
 icons_dir: icons
 output_file: weather-script-output.png
+port: 8080
 
 # ── Data Sources ────────────────────────────────────────────────
 # Secrets and deployment-specific values use ${ENV_VAR} syntax

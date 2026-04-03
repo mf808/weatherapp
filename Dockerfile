@@ -18,4 +18,6 @@ USER appuser
 
 COPY --chown=appuser:appuser . .
 
-CMD ["python", "-m", "src.main"]
+EXPOSE 8080
+
+CMD ["python", "-m", "src.server"]
