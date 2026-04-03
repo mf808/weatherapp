@@ -82,7 +82,7 @@ def render(config: dict, all_data: dict, fonts: FontRegistry, icons_dir: str) ->
     wm_x = mid_center_x - wm_w // 2
     wm_y = height - wm_bbox[3] + wm_bbox[1] - 4
     draw = ImageDraw.Draw(img)
-    draw.text((wm_x, wm_y), now_str, font=wm_font, fill=(100, 100, 100))
+    draw.text((wm_x, wm_y), now_str, font=wm_font, fill=(180, 180, 180))
 
     # Apply device-specific post-processing
     if device_cfg.get("rotation"):
