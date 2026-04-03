@@ -1,0 +1,22 @@
+services:
+  app_weather:
+    build: .
+    container_name: app_weather
+    restart: unless-stopped
+    volumes:
+      - ./creds.json:/app/creds.json:rw
+      - ./output:/app/output:rw
+    environment:
+      # Required — secrets and device identifiers
+      - CLIENT_ID=${CLIENT_ID}
+      - CLIENT_SECRET=${CLIENT_SECRET}
+      - DEVICE_ID=${DEVICE_ID}
+      - OUTDOOMODULE_ID=${OUTDOOMODULE_ID}
+      - OPENWEATHERMAP_APPID=${OPENWEATHERMAP_APPID}
+
+      # Optional — overrides with defaults in config.yaml
+      # - NETATMO_API_BASE=https://api.netatmo.com
+      # - OPENWEATHERMAP_API_BASE=https://api.openweathermap.org/data/2.5
+      # - OPENWEATHERMAP_CITY_ID=6940468
+    mem_limit: 128M
+    mem_reservation: 64M

@@ -2,3 +2,7 @@
 weather-script-output.png
 oauth.http
 creds.json
+.env
+.venv/
+__pycache__/
+.claude

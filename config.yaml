@@ -1,0 +1,86 @@
+# ── Device Profiles ──────────────────────────────────────────────
+devices:
+  eink_portrait:
+    width: 600
+    height: 800
+    rotation: 0
+    grayscale: true
+  eink_landscape:
+    width: 800
+    height: 600
+    rotation: 90
+    grayscale: true
+  tablet:
+    width: 1024
+    height: 768
+    rotation: 0
+    grayscale: false
+
+device: eink_landscape
+
+# ── General ─────────────────────────────────────────────────────
+timezone: Europe/Berlin
+fonts_dir: fonts
+icons_dir: icons
+output_file: weather-script-output.png
+
+# ── Data Sources ────────────────────────────────────────────────
+# Secrets and deployment-specific values use ${ENV_VAR} syntax
+# and are injected via docker-compose environment or .env file.
+datasources:
+  netatmo:
+    type: netatmo
+    api_base: ${NETATMO_API_BASE:-https://api.netatmo.com}
+    creds_file: creds.json
+    client_id: ${CLIENT_ID}
+    client_secret: ${CLIENT_SECRET}
+    device_id: ${DEVICE_ID}
+    outdoor_module_id: ${OUTDOOMODULE_ID}
+    history_scale: 30min
+    history_limit: 12
+
+  openweathermap:
+    type: openweathermap
+    api_base: ${OPENWEATHERMAP_API_BASE:-https://api.openweathermap.org/data/2.5}
+    app_id: ${OPENWEATHERMAP_APPID}
+    city_id: ${OPENWEATHERMAP_CITY_ID:-6940468}
+
+# ── Layout ──────────────────────────────────────────────────────
+# Rows and cells use proportional sizes (0.0–1.0).
+# Modules are looked up by name from the module registry.
+layout:
+  rows:
+    - height: 0.5
+      background: white
+      cells:
+        - width: 0.33
+          module: outdoor
+          source: netatmo
+          source_key: outdoor
+          params:
+            weather_source: openweathermap
+            weather_key: current
+        - width: 0.34
+          module: temperature_chart
+          source: netatmo
+          source_key: outdoor_history
+        - width: 0.33
+          module: forecast
+          params:
+            forecast_source: openweathermap
+
+    - height: 0.5
+      background: black
+      cells:
+        - width: 0.33
+          module: room_climate
+          source: netatmo
+          source_key: Kinderzimmer
+        - width: 0.34
+          module: room_climate
+          source: netatmo
+          source_key: Elternzimmer
+        - width: 0.33
+          module: room_climate
+          source: netatmo
+          source_key: Wohnzimmer
