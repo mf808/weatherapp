@@ -68,6 +68,24 @@ class WeatherHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"OK")
             return
 
+        if self.path == "/weather-script-output.png":
+            # Static file serving — backwards compatible with old wget pattern
+            output_file = self.server.config.get("output_file", "weather-script-output.png")
+            if os.path.isfile(output_file):
+                with open(output_file, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Image not generated yet")
+            return
+
         if self.path == "/image":
             try:
                 output_file = generate(self.server.config, self.server.fonts, self.server.icons_dir)
