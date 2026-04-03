@@ -1,12 +1,36 @@
 # weatherapp
 
-##
-Dockerfile only creates a base image that mounts the weather folder and runs the php script.  
-This allows immediate changes and does not require a new build everytime the php code is changed.
+Modular weather display for e-ink screens. Fetches data from Netatmo and OpenWeatherMap, renders a grayscale PNG with configurable layout.
 
-## Installation
-Create a creds.json file where the php file exists which looks like this. Add the correct access and refresh tokens from the netatmo API website.  
-On every execution it has to refresh both tokens and will write it to a file.
+## Architecture
+
+```
+src/
+  server.py              # HTTP server (trigger + serve PNG)
+  main.py                # CLI one-shot mode
+  renderer.py            # Grid engine + module registry
+  datasources/           # Netatmo, OpenWeatherMap
+  modules/               # outdoor, room_climate, forecast, temperature_chart, datetime_info
+  utils/                 # colors, config, fonts, http, image
+config.yaml              # Layout, device profiles, datasource config
+```
+
+## Prerequisites
+
+- Netatmo account with API credentials: <https://dev.netatmo.com/apps/>
+- OpenWeatherMap free API key: <https://openweathermap.org/api>
+
+## Setup
+
+### 1. Create a data folder
+
+```bash
+mkdir -p /path/to/data
+```
+
+### 2. Create `creds.json`
+
+Get initial tokens from <https://dev.netatmo.com/apps/> and create the file in your data folder:
 
 ```json
 {
@@ -15,40 +39,114 @@ On every execution it has to refresh both tokens and will write it to a file.
 }
 ```
 
-## Issues
-If only the old version of output.png is refreshed the reasons could be:
-- the pngs are write protected. To fix remove the 6h.png and weather-script-output.png and rerun.
-- the refresh/access token has expired. Recreate a new one and update the creds.json file. <https://dev.netatmo.com/apps/>
+Tokens are automatically refreshed on every run.
 
+### 3. Copy `config.yaml`
 
-## Build
-Build is triggered via the docker-compose file.
+Copy `config.yaml` from this repo into your data folder. This controls the display layout, device profiles, and datasource settings. Edit it to match your setup:
 
-## Env Variables
-see docker compose file
+```bash
+cp config.yaml /path/to/data/config.yaml
+```
 
-## docker-compose
-```docker-compose
----
-version: '2.4'
+Key things to configure:
+- `device:` — select a device profile (`eink_landscape`, `eink_portrait`, `tablet`)
+- `layout:` — rearrange modules, change grid proportions
+- `datasources.netatmo.history_scale` / `history_limit` — chart data resolution
 
+### 4. Create an empty output file
+
+```bash
+touch /path/to/data/weather-script-output.png
+```
+
+## Docker Deployment
+
+The image builds directly from GitHub — no local clone needed.
+
+```yaml
 services:
-  app_weather:
-    build:
-      context: .
-      dockerfile: Dockerfile 
-    container_name: app_weather
+  weather:
+    build: https://github.com/mf808/weatherapp.git#main
+    container_name: weather
     restart: unless-stopped
     volumes:
-      - /volume3/docker/weather/weather:/var/www/html:rw
+      - /path/to/data/config.yaml:/app/config.yaml:ro
+      - /path/to/data/creds.json:/app/creds.json:rw
+      - /path/to/data/weather-script-output.png:/app/weather-script-output.png:rw
     ports:
       - 81:8080
     environment:
-      - CLIENT_ID=XXXXXXXXXXXXXXXXXXXXXXXX
-      - CLIENT_SECRET=XXXXXXXXXXXXXXX
+      - CLIENT_ID=your_netatmo_client_id
+      - CLIENT_SECRET=your_netatmo_client_secret
       - DEVICE_ID=XX:XX:XX:XX:XX:XX
       - OUTDOOMODULE_ID=XX:XX:XX:XX:XX:XX
-      - OPENWEATHERMAP_APPID=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX 
+      - OPENWEATHERMAP_APPID=your_openweathermap_key
     mem_limit: 128M
     mem_reservation: 64M
 ```
+
+### Build and start
+
+```bash
+docker-compose build && docker-compose up -d
+```
+
+### Update to latest version
+
+```bash
+docker-compose build --no-cache && docker-compose up -d
+```
+
+## HTTP Endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /` | Trigger image generation, returns `200` with status text |
+| `GET /weather-script-output.png` | Download the last generated PNG |
+| `GET /image` | Generate and return PNG in one request |
+| `GET /health` | Health check |
+
+### Typical usage (e.g. from cron)
+
+```bash
+curl http://hostname:81/                              # trigger
+wget -O display.png http://hostname:81/weather-script-output.png  # download
+```
+
+## Local Development
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+export CLIENT_ID=... CLIENT_SECRET=... DEVICE_ID=... OUTDOOMODULE_ID=... OPENWEATHERMAP_APPID=...
+python -m src.main          # one-shot: generates weather-script-output.png
+python -m src.server        # HTTP server on port 8080
+```
+
+## Layout Customization
+
+Edit `config.yaml` to rearrange the display. The layout uses proportional sizes (0.0-1.0):
+
+```yaml
+layout:
+  rows:
+    - height: 0.5
+      background: white
+      cells:
+        - width: 0.33
+          module: outdoor
+          source: netatmo
+          source_key: outdoor
+```
+
+Available modules: `outdoor`, `room_climate`, `temperature_chart`, `forecast`, `datetime_info`
+
+To add a new Netatmo sensor, add a `room_climate` cell with the sensor's name as `source_key`.
+
+## Troubleshooting
+
+- **Stale image**: check that the cron/trigger is running and hitting `GET /`
+- **Expired tokens**: recreate at <https://dev.netatmo.com/apps/> and update `creds.json`
+- **Sensor offline**: if a module shows `--`, the sensor has lost connection to the base station (check battery/RF signal)
+- **Container logs**: `docker logs weather`
