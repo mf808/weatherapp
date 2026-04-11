@@ -1,4 +1,6 @@
+import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw
 from src.modules.base import Module
@@ -15,7 +17,7 @@ class DateTimeModule(Module):
         draw = ImageDraw.Draw(img)
         sx, sy = cell_scale(width, height)
 
-        now = datetime.now()
+        now = datetime.now(tz=ZoneInfo(os.environ.get("TZ", "Europe/Berlin")))
         font_label = fonts.scaled(fonts.text_medium, 20 * sy)
         font_date = fonts.scaled(fonts.text_medium, 18 * sy)
 

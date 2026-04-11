@@ -14,6 +14,8 @@ services:
       - OUTDOOMODULE_ID=${OUTDOOMODULE_ID}
       - OPENWEATHERMAP_APPID=${OPENWEATHERMAP_APPID}
 
+      - TZ=Europe/Berlin
+
       # Optional — overrides with defaults in config.yaml
       # - NETATMO_API_BASE=https://api.netatmo.com
       # - OPENWEATHERMAP_API_BASE=https://api.openweathermap.org/data/2.5

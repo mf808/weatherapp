@@ -1,4 +1,6 @@
+import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw
 
@@ -73,7 +75,7 @@ def render(config: dict, all_data: dict, fonts: FontRegistry, icons_dir: str) ->
         y_offset += row_height
 
     # Timestamp watermark — bottom center of middle lower quadrant
-    now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+    now_str = datetime.now(tz=ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))).strftime("%d.%m.%Y %H:%M")
     wm_font = fonts.scaled(fonts.text_medium, 10)
     wm_bbox = wm_font.getbbox(now_str)
     wm_w = wm_bbox[2] - wm_bbox[0]

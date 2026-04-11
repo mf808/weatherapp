@@ -2,6 +2,7 @@ import logging
 import os
 from collections import defaultdict
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -90,7 +91,7 @@ class OpenWeatherMapSource(DataSource):
         by_date = defaultdict(list)
         for entry in entries_list:
             try:
-                dt = datetime.fromtimestamp(entry["dt"])
+                dt = datetime.fromtimestamp(entry["dt"], tz=ZoneInfo(os.environ.get("TZ", "Europe/Berlin")))
             except (KeyError, TypeError, ValueError, OSError):
                 continue
             date_key = dt.strftime("%Y-%m-%d")
@@ -108,7 +109,7 @@ class OpenWeatherMapSource(DataSource):
                 "pop": entry.get("pop", 0),
             })
 
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now(tz=ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))).strftime("%Y-%m-%d")
         all_dates = sorted(by_date.keys())
         start_dates = [d for d in all_dates if d >= today][:3]
 

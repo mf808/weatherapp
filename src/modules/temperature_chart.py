@@ -1,6 +1,7 @@
 import io
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import matplotlib
 matplotlib.use("Agg")
@@ -62,7 +63,7 @@ class TemperatureChartModule(Module):
             ax.plot(x, temps, color="navy", linewidth=3)
 
         # X-axis: hour labels at whole-hour positions
-        now_hour = datetime.now().hour
+        now_hour = datetime.now(tz=ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))).hour
         hours_back = len(temps) / 2
         tick_positions = list(range(0, len(temps), 2))
         tick_labels = [str(int(now_hour - hours_back + 1 + i)) for i in range(len(tick_positions))]

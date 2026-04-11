@@ -4,6 +4,7 @@ import os
 import stat
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -45,7 +46,7 @@ def _safe_float(value, default: str = "--") -> str:
 def _safe_timestamp(value, fmt: str = "%H:%M", default: str = "--") -> str:
     """Safely format a unix timestamp."""
     try:
-        return datetime.fromtimestamp(int(value)).strftime(fmt)
+        return datetime.fromtimestamp(int(value), tz=ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))).strftime(fmt)
     except (TypeError, ValueError, OSError):
         return default
 
