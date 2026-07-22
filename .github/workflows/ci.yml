@@ -25,7 +25,7 @@ jobs:
 
       - name: Upload visual diff artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-artifacts
           path: tests/visual/_artifacts/
