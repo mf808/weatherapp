@@ -23,6 +23,14 @@ jobs:
       - name: Run test suite
         run: python -m pytest -q
 
+      - name: Upload visual diff artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-artifacts
+          path: tests/visual/_artifacts/
+          if-no-files-found: ignore
+
       - name: Dependency vulnerability audit (informational)
         continue-on-error: true
         run: |

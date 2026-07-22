@@ -26,6 +26,21 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = REPO_ROOT / "tests" / "visual" / "golden" / "eink_landscape.png"
 ARTIFACTS = REPO_ROOT / "tests" / "visual" / "_artifacts"
 
+# Pixel-exact rendering is deterministic within an environment but NOT portable
+# across machines (FreeType/BLAS/SIMD differences shift antialiased edges). The
+# golden is therefore generated in — and the test only runs in — the canonical CI
+# environment. Locally, set RUN_VISUAL=1 (to compare) or UPDATE_GOLDEN=1 (to write)
+# from an environment that matches CI, e.g. inside the Docker image.
+_CANONICAL = (
+    os.environ.get("CI") == "true"
+    or os.environ.get("RUN_VISUAL") == "1"
+    or bool(os.environ.get("UPDATE_GOLDEN"))
+)
+pytestmark = pytest.mark.skipif(
+    not _CANONICAL,
+    reason="visual golden runs only in the canonical CI env (set RUN_VISUAL=1 to force)",
+)
+
 # Frozen instant used for every render (TZ is pinned to UTC by conftest).
 FROZEN_NOW = "2035-06-01 09:47:00"
 
