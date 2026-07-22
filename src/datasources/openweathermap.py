@@ -151,7 +151,9 @@ class OpenWeatherMapSource(DataSource):
         try:
             result["forecast"] = self._fetch_forecast()
         except requests.RequestException as e:
-            log.warning("Could not fetch forecast: %s", e)
+            # Log only the exception type: requests errors embed the full URL,
+            # which carries the APPID secret as a query parameter.
+            log.warning("Could not fetch forecast: %s", type(e).__name__)
             result["forecast"] = []
 
         return result

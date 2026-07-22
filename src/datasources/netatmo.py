@@ -230,7 +230,9 @@ class NetatmoSource(DataSource):
             temps = self._fetch_6h_history()
             result["outdoor_history"] = {"temperatures": temps}
         except requests.RequestException as e:
-            log.warning("Could not fetch 6h history: %s", e)
+            # Log only the exception type: requests errors embed the full URL,
+            # which carries device/module MAC addresses as query parameters.
+            log.warning("Could not fetch 6h history: %s", type(e).__name__)
             result["outdoor_history"] = {"temperatures": []}
 
         return result
