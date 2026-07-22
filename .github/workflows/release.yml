@@ -14,6 +14,12 @@ concurrency:
 env:
   IMAGE: ghcr.io/mf808/weatherapp
 
+# Least-privilege default for the test job; the release job declares its own
+# elevated grants below, which override this. (CodeQL:
+# actions/missing-workflow-permissions)
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
