@@ -18,36 +18,31 @@ import numpy as np
 import pytest
 import yaml
 from freezegun import freeze_time
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from src.renderer import render
+from src.utils.image import apply_rotation
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = REPO_ROOT / "tests" / "visual" / "golden" / "eink_landscape.png"
 ARTIFACTS = REPO_ROOT / "tests" / "visual" / "_artifacts"
 
-# Pixel-exact rendering is deterministic within an environment but NOT portable
-# across machines (FreeType/BLAS/SIMD differences shift antialiased edges). The
-# golden is therefore generated in — and the test only runs in — the canonical CI
-# environment. Locally, set RUN_VISUAL=1 (to compare) or UPDATE_GOLDEN=1 (to write)
-# from an environment that matches CI, e.g. inside the Docker image.
-_CANONICAL = (
-    os.environ.get("CI") == "true"
-    or os.environ.get("RUN_VISUAL") == "1"
-    or bool(os.environ.get("UPDATE_GOLDEN"))
-)
-pytestmark = pytest.mark.skipif(
-    not _CANONICAL,
-    reason="visual golden runs only in the canonical CI env (set RUN_VISUAL=1 to force)",
-)
+# Everything Pillow draws is bit-identical across machines (verified: 0.0000% diff
+# WSL vs CI outside the chart). The matplotlib temperature chart is NOT pixel-portable
+# — its scipy/BLAS spline math shifts antialiased edges by sub-pixel amounts across
+# CPUs/builds — so its cell is masked out of the compare here and smoke-tested for
+# non-emptiness in test_modules.py instead. That keeps this golden portable (runs
+# anywhere) and the tolerance tight enough to catch real regressions.
 
 # Frozen instant used for every render (TZ is pinned to UTC by conftest).
 FROZEN_NOW = "2035-06-01 09:47:00"
 
 # Tolerance: a pixel counts as "changed" if it differs by more than PIXEL_DELTA
-# (out of 255); the test fails if more than MAX_CHANGED_FRACTION of pixels changed.
+# (out of 255); the test fails if more than MAX_CHANGED_FRACTION of the (non-chart)
+# pixels changed. The non-chart region is bit-identical across machines, so this is
+# deliberately tight.
 PIXEL_DELTA = 12
-MAX_CHANGED_FRACTION = 0.01  # 1%
+MAX_CHANGED_FRACTION = 0.001  # 0.1%
 
 # Fixed, representative data matching the source_keys referenced by config.yaml.
 DATA = {
@@ -96,6 +91,29 @@ def _render(fonts, icons_dir) -> Image.Image:
         return render(_load_config(), DATA, fonts, str(icons_dir))
 
 
+def _chart_ignore_mask(config: dict) -> np.ndarray:
+    """Boolean mask (True = ignore) over the temperature_chart cell, in final-image
+    space. Built in device space from the layout geometry, then rotated the same way
+    the renderer rotates the output so it lines up exactly."""
+    dev = config["devices"][config["device"]]
+    W, H, rot = dev["width"], dev["height"], dev.get("rotation")
+    mask = Image.new("L", (W, H), 0)
+    draw = ImageDraw.Draw(mask)
+    y = 0
+    for row in config["layout"]["rows"]:
+        rh = int(H * row["height"])
+        x = 0
+        for cell in row["cells"]:
+            cw = int(W * cell["width"])
+            if cell["module"] == "temperature_chart":
+                draw.rectangle([x, y, x + cw - 1, y + rh - 1], fill=255)
+            x += cw
+        y += rh
+    if rot:
+        mask = apply_rotation(mask, rot)
+    return np.asarray(mask) > 0
+
+
 def test_display_matches_golden(fonts, icons_dir):
     img = _render(fonts, icons_dir)
 
@@ -111,7 +129,8 @@ def test_display_matches_golden(fonts, icons_dir):
 
     a = np.asarray(img, dtype=np.int16)
     g = np.asarray(golden, dtype=np.int16)
-    changed = np.abs(a - g) > PIXEL_DELTA
+    ignore = _chart_ignore_mask(_load_config())  # matplotlib cell is not pixel-portable
+    changed = (np.abs(a - g) > PIXEL_DELTA) & ~ignore
     frac = float(changed.mean())
 
     if frac > MAX_CHANGED_FRACTION:
@@ -119,7 +138,7 @@ def test_display_matches_golden(fonts, icons_dir):
         img.save(ARTIFACTS / "actual.png", "PNG")
         Image.fromarray((changed * 255).astype("uint8")).save(ARTIFACTS / "diff_mask.png", "PNG")
         pytest.fail(
-            f"{frac:.3%} of pixels changed (limit {MAX_CHANGED_FRACTION:.1%}). "
+            f"{frac:.3%} of non-chart pixels changed (limit {MAX_CHANGED_FRACTION:.1%}). "
             f"Wrote {ARTIFACTS/'actual.png'} and {ARTIFACTS/'diff_mask.png'}. "
             f"If this change is intended, regenerate with UPDATE_GOLDEN=1."
         )
