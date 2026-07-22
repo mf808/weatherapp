@@ -40,6 +40,12 @@ pins `TZ=UTC` (autouse) so timestamp/date logic is deterministic on any host. Da
 tests use fixed future timestamps (year 2035) to stay clear of the forecast's `>= today`
 filter. CI runs the suite on every PR (`.github/workflows/ci.yml`); no linter is configured.
 
+`tests/test_visual.py` is a golden-image regression test: it renders the real `config.yaml`
+layout with a fixed dataset under a frozen clock (freezegun) and compares to
+`tests/visual/golden/eink_landscape.png` with a small pixel tolerance. After an intended
+visual change, regenerate the golden with `UPDATE_GOLDEN=1 python -m pytest tests/test_visual.py`
+and commit it; on failure it writes `actual.png` + `diff_mask.png` under `tests/visual/_artifacts/`.
+
 ## Development workflow (non-negotiable)
 
 This repo deploys itself: a push to `main` auto-versions, builds a Docker image, and
