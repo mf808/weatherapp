@@ -38,7 +38,33 @@ Tests are static and repeatable: no network (all HTTP is monkeypatched at the
 `src.utils.http` boundary via a `FakeResponse` in `conftest.py`), and `conftest.py`
 pins `TZ=UTC` (autouse) so timestamp/date logic is deterministic on any host. Datasource
 tests use fixed future timestamps (year 2035) to stay clear of the forecast's `>= today`
-filter. No linter or CI is configured.
+filter. CI runs the suite on every PR (`.github/workflows/ci.yml`); no linter is configured.
+
+## Development workflow (non-negotiable)
+
+This repo deploys itself: a push to `main` auto-versions, builds a Docker image, and
+publishes it to GHCR (`ghcr.io/mf808/weatherapp`), where Watchtower on the NAS picks it
+up. To keep `main` — and therefore the `latest` image and the physical display — always
+green, **every change goes through a gated PR. Never push to `main` directly** (branch
+protection enforces this server-side too).
+
+For any code change:
+1. Branch off `main`: `git switch -c <type>/<slug>`.
+2. Implement, then run `python -m pytest` locally.
+3. Push the branch and open a PR whose **title is a Conventional Commit** — this drives
+   the version bump: `fix:` → patch, `feat:` → minor, `feat!:` / `BREAKING CHANGE` → major.
+4. `.github/workflows/ci.yml` runs the suite on the PR; branch protection blocks merge
+   until it is green.
+5. **Squash-merge.** `.github/workflows/release.yml` then tags `vX.Y.Z`, builds, and pushes
+   `ghcr.io/mf808/weatherapp:vX.Y.Z` + `:latest`, and cuts a GitHub Release.
+
+Dependabot PRs are handled hands-off: `.github/workflows/auto-merge.yml` enables
+auto-merge for patch/minor bumps (they merge once CI is green, then release like any
+change); major bumps wait for a human. Versions are derived automatically from commit
+messages — write Conventional-Commits titles and **never hand-edit a version number**. Deploy is hands-off (Watchtower). The one
+deliberate manual action is **rollback**: pin a known-good tag on the NAS with
+`./rollback.sh v1.4.0` (or set `image: ...:v1.4.0` in `deploy/docker-compose.yaml` and
+`docker compose up -d`).
 
 ## Architecture
 

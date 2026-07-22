@@ -1,0 +1,21 @@
+# Keep the build context (and image) lean — nothing here is needed at runtime.
+.git
+.github
+.gitignore
+.venv
+.claude
+tests
+__pycache__
+**/__pycache__
+*.pyc
+*-sample.png
+6h-sample.png
+weather-script-output.png
+creds.json
+.env
+pytest.ini
+requirements-dev.txt
+CLAUDE.md
+README.md
+rollback.sh
+deploy

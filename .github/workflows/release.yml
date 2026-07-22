@@ -1,0 +1,71 @@
+name: Release
+
+# On every merge to main: re-run the suite, then auto-version, build, and publish
+# the image to GHCR as both an immutable vX.Y.Z tag and the moving `latest` tag.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/mf808/weatherapp
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the vX.Y.Z git tag + GitHub Release
+      packages: write    # push the image to GHCR
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the version is computed from all commits
+
+      - name: Compute next version from commit messages
+        id: tag
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch   # fix:->patch, feat:->minor, feat!/BREAKING->major
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.tag.outputs.new_tag }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.tag.outputs.new_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.new_tag }}
+          name: ${{ steps.tag.outputs.new_tag }}
+          body: ${{ steps.tag.outputs.changelog }}
