@@ -1,5 +1,5 @@
 # Production compose for the NAS — pulls the pre-built image from GHCR instead of
-# building from source. Watchtower auto-deploys new `:latest` releases.
+# building from source.
 #
 # One-time setup on the NAS:
 #   1. Put this file at /volume3/docker/composers/weather/docker-compose.yaml
@@ -8,8 +8,13 @@
 #      auto-loads .env from the project directory, not from the data volume.
 #   3. docker compose pull && docker compose up -d
 #
-# After that, deploys are automatic: a merge to main publishes a new image and
-# Watchtower picks it up within the poll interval. To roll back, run ./rollback.sh.
+# Auto-deploy: Watchtower runs as its own compose project on the NAS
+# (/volume3/docker/composers/watchtower/) with two scoped instances:
+#   scope=fast    → polls every 5 min (this app: a merge to main reaches the
+#                   display within ~5 minutes of the image publish)
+#   scope=nightly → daily 04:00 window for restart-sensitive apps
+# The label below opts this container into the fast scope. To roll back to a
+# pinned version, run ./rollback.sh.
 
 services:
   weather:
@@ -32,18 +37,5 @@ services:
     mem_limit: 128M
     mem_reservation: 64M
     labels:
-      # Opt this container in to Watchtower's watch list.
-      - com.centurylinklabs.watchtower.enable=true
-
-  watchtower:
-    # Actively maintained fork of the dormant containrrr/watchtower (last release
-    # 2023). Drop-in compatible: same flags, same com.centurylinklabs.* labels.
-    image: ghcr.io/nicholas-fedor/watchtower
-    container_name: watchtower
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    # --label-enable: only touch containers that opted in (the label above), so
-    #   Watchtower never restarts your other NAS containers.
-    # --interval 300: check GHCR every 5 minutes. --cleanup: prune old images.
-    command: --label-enable --cleanup --interval 300
+      # Auto-updated by the NAS-wide watchtower-fast instance (5-min polls).
+      - com.centurylinklabs.watchtower.scope=fast
