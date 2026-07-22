@@ -1,12 +1,13 @@
 name: Dependabot auto-merge
 
-# For Dependabot PRs: enable auto-merge for backward-compatible bumps (patch/minor).
-# GitHub then merges the PR the moment the CI gate passes — and not before — so the
-# tests still guard every dependency change. Major bumps are left for manual review.
+# Every Dependabot PR — any ecosystem, any bump level (patch / minor / major) — is
+# set to auto-merge with no human or Claude interaction. The CI gate (the full test
+# suite, including the visual regression test) is the sole decider: GitHub merges the
+# PR the moment CI passes, and never before.
 #
-# Prerequisites (both are one-time repo settings):
-#   - "Allow auto-merge" enabled (Settings -> General -> Pull Requests)
-#   - Branch protection on main requiring the CI check (so --auto waits for green)
+# A bump that changes the rendered display turns the visual test red, so it is held
+# automatically for review (regenerate the golden) rather than merged — which is the
+# rule "merge as long as the tests still work" doing exactly its job.
 on: pull_request
 
 permissions:
@@ -18,14 +19,7 @@ jobs:
     if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Dependabot metadata
-        id: meta
-        uses: dependabot/fetch-metadata@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Enable auto-merge for patch and minor updates
-        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+      - name: Enable auto-merge (CI decides the actual merge)
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
