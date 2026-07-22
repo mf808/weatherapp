@@ -1,0 +1,32 @@
+name: Dependabot auto-merge
+
+# For Dependabot PRs: enable auto-merge for backward-compatible bumps (patch/minor).
+# GitHub then merges the PR the moment the CI gate passes — and not before — so the
+# tests still guard every dependency change. Major bumps are left for manual review.
+#
+# Prerequisites (both are one-time repo settings):
+#   - "Allow auto-merge" enabled (Settings -> General -> Pull Requests)
+#   - Branch protection on main requiring the CI check (so --auto waits for green)
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for patch and minor updates
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

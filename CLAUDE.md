@@ -58,8 +58,10 @@ For any code change:
 5. **Squash-merge.** `.github/workflows/release.yml` then tags `vX.Y.Z`, builds, and pushes
    `ghcr.io/mf808/weatherapp:vX.Y.Z` + `:latest`, and cuts a GitHub Release.
 
-Versions are derived automatically from commit messages — write Conventional-Commits
-titles and **never hand-edit a version number**. Deploy is hands-off (Watchtower). The one
+Dependabot PRs are handled hands-off: `.github/workflows/auto-merge.yml` enables
+auto-merge for patch/minor bumps (they merge once CI is green, then release like any
+change); major bumps wait for a human. Versions are derived automatically from commit
+messages — write Conventional-Commits titles and **never hand-edit a version number**. Deploy is hands-off (Watchtower). The one
 deliberate manual action is **rollback**: pin a known-good tag on the NAS with
 `./rollback.sh v1.4.0` (or set `image: ...:v1.4.0` in `deploy/docker-compose.yaml` and
 `docker compose up -d`).
