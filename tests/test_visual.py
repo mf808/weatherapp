@@ -7,8 +7,10 @@ Determinism is engineered on both axes:
   * Comparison: a small per-pixel tolerance absorbs sub-pixel antialiasing (mainly
     from the matplotlib chart) while still catching any real layout/content change.
 
-Regenerate the golden intentionally after a deliberate visual change:
-    UPDATE_GOLDEN=1 python -m pytest tests/test_visual.py
+After a deliberate visual change, regenerate the golden from the CANONICAL CI env:
+push the change, let CI fail, download the `visual-artifacts` artifact, and commit its
+`actual.png` as tests/visual/golden/eink_landscape.png. (`UPDATE_GOLDEN=1` writes a
+golden locally too, but a locally-rendered chart won't match CI's chart check.)
 """
 
 import os
@@ -27,22 +29,25 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 GOLDEN = REPO_ROOT / "tests" / "visual" / "golden" / "eink_landscape.png"
 ARTIFACTS = REPO_ROOT / "tests" / "visual" / "_artifacts"
 
-# Everything Pillow draws is bit-identical across machines (verified: 0.0000% diff
-# WSL vs CI outside the chart). The matplotlib temperature chart is NOT pixel-portable
-# — its scipy/BLAS spline math shifts antialiased edges by sub-pixel amounts across
-# CPUs/builds — so its cell is masked out of the compare here and smoke-tested for
-# non-emptiness in test_modules.py instead. That keeps this golden portable (runs
-# anywhere) and the tolerance tight enough to catch real regressions.
+# The golden is generated in the canonical CI environment (it IS a CI render). The
+# comparison is split into two regions with different portability:
+#   * Non-chart region — everything Pillow draws — is bit-identical across machines
+#     (verified 0.0000% WSL vs CI). Checked tightly, EVERYWHERE (local + CI).
+#   * Chart region — the matplotlib/scipy plot — is only pixel-stable within one
+#     environment (BLAS/FreeType shift antialiased edges across machines). Checked
+#     only when running in CI, so a matplotlib/scipy/numpy bump that changes the
+#     chart is caught, without false failures on developers' machines.
+# Regenerate after an intended render change by committing the CI run's actual.png
+# (uploaded as the `visual-artifacts` artifact on failure) as the new golden.
 
 # Frozen instant used for every render (TZ is pinned to UTC by conftest).
 FROZEN_NOW = "2035-06-01 09:47:00"
 
-# Tolerance: a pixel counts as "changed" if it differs by more than PIXEL_DELTA
-# (out of 255); the test fails if more than MAX_CHANGED_FRACTION of the (non-chart)
-# pixels changed. The non-chart region is bit-identical across machines, so this is
-# deliberately tight.
+# A pixel counts as "changed" if it differs by more than PIXEL_DELTA (out of 255).
+# Each region fails if more than its threshold FRACTION of that region's pixels changed.
 PIXEL_DELTA = 12
-MAX_CHANGED_FRACTION = 0.001  # 0.1%
+NON_CHART_MAX = 0.001  # 0.1% of non-chart pixels (portable, bit-identical → tight)
+CHART_MAX = 0.01       # 1% of chart pixels (CI only; small margin over CI-vs-CI noise)
 
 # Fixed, representative data matching the source_keys referenced by config.yaml.
 DATA = {
@@ -129,16 +134,27 @@ def test_display_matches_golden(fonts, icons_dir):
 
     a = np.asarray(img, dtype=np.int16)
     g = np.asarray(golden, dtype=np.int16)
-    ignore = _chart_ignore_mask(_load_config())  # matplotlib cell is not pixel-portable
-    changed = (np.abs(a - g) > PIXEL_DELTA) & ~ignore
-    frac = float(changed.mean())
+    diff = np.abs(a - g) > PIXEL_DELTA
+    chart = _chart_ignore_mask(_load_config())
 
-    if frac > MAX_CHANGED_FRACTION:
+    failures = []
+    non_chart_frac = float(diff[~chart].mean())
+    if non_chart_frac > NON_CHART_MAX:
+        failures.append(f"non-chart region: {non_chart_frac:.3%} changed (limit {NON_CHART_MAX:.1%})")
+
+    # The chart is only pixel-stable within one environment, so only assert on it in CI.
+    in_ci = os.environ.get("CI") == "true"
+    if in_ci:
+        chart_frac = float(diff[chart].mean())
+        if chart_frac > CHART_MAX:
+            failures.append(f"chart region: {chart_frac:.3%} changed (limit {CHART_MAX:.1%})")
+
+    if failures:
         ARTIFACTS.mkdir(parents=True, exist_ok=True)
         img.save(ARTIFACTS / "actual.png", "PNG")
-        Image.fromarray((changed * 255).astype("uint8")).save(ARTIFACTS / "diff_mask.png", "PNG")
+        Image.fromarray((diff * 255).astype("uint8")).save(ARTIFACTS / "diff_mask.png", "PNG")
         pytest.fail(
-            f"{frac:.3%} of non-chart pixels changed (limit {MAX_CHANGED_FRACTION:.1%}). "
-            f"Wrote {ARTIFACTS/'actual.png'} and {ARTIFACTS/'diff_mask.png'}. "
-            f"If this change is intended, regenerate with UPDATE_GOLDEN=1."
+            "; ".join(failures)
+            + f". Wrote {ARTIFACTS/'actual.png'} + {ARTIFACTS/'diff_mask.png'}. "
+            + "If intended, commit the CI run's actual.png as the new golden."
         )
