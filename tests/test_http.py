@@ -68,4 +68,29 @@ def test_response_at_exact_limit_allowed(monkeypatch):
 
 def test_missing_content_length_allowed(monkeypatch):
     _install(monkeypatch, "get", FakeResponse(headers={}))
-    safe_get("http://x")  # no header → size unknown → not rejected
+    safe_get("http://x")  # no header, small body → allowed
+
+
+def test_oversized_body_without_content_length_rejected(monkeypatch):
+    """Chunked responses carry no Content-Length; the cap must hold anyway."""
+    resp = FakeResponse(headers={}, content=b"x" * (MAX_RESPONSE_BYTES + 1))
+    _install(monkeypatch, "get", resp)
+    with pytest.raises(ValueError, match="too large"):
+        safe_get("http://x")
+    assert resp.closed is True
+
+
+def test_lying_content_length_rejected(monkeypatch):
+    """A Content-Length header smaller than the actual body must not bypass the cap."""
+    resp = FakeResponse(headers={"content-length": "10"}, content=b"x" * (MAX_RESPONSE_BYTES + 1))
+    _install(monkeypatch, "get", resp)
+    with pytest.raises(ValueError, match="too large"):
+        safe_get("http://x")
+    assert resp.closed is True
+
+
+def test_body_readable_after_streaming(monkeypatch):
+    """After the capped read, .content must still hold the full body."""
+    resp = FakeResponse(headers={}, content=b"hello world")
+    _install(monkeypatch, "get", resp)
+    assert safe_get("http://x")._content == b"hello world"
