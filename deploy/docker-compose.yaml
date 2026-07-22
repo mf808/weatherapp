@@ -3,7 +3,9 @@
 #
 # One-time setup on the NAS:
 #   1. Put this file at /volume3/docker/composers/weather/docker-compose.yaml
-#   2. Create /volume3/docker/weather/data/.env with the secrets below
+#   2. Create /volume3/docker/composers/weather/.env with the secrets below and
+#      chmod 600 it. It must sit NEXT TO this compose file — docker compose only
+#      auto-loads .env from the project directory, not from the data volume.
 #   3. docker compose pull && docker compose up -d
 #
 # After that, deploys are automatic: a merge to main publishes a new image and
