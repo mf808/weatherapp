@@ -6,3 +6,4 @@ creds.json
 .venv/
 __pycache__/
 .claude
+tests/visual/_artifacts/

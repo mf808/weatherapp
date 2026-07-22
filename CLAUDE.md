@@ -40,6 +40,18 @@ pins `TZ=UTC` (autouse) so timestamp/date logic is deterministic on any host. Da
 tests use fixed future timestamps (year 2035) to stay clear of the forecast's `>= today`
 filter. CI runs the suite on every PR (`.github/workflows/ci.yml`); no linter is configured.
 
+`tests/test_visual.py` is a golden-image regression test — the strongest guard against a
+dependency bump silently changing the rendered display. It renders the real `config.yaml`
+layout with a fixed dataset under a frozen clock (freezegun) and compares to the
+CI-generated golden `tests/visual/golden/eink_landscape.png`. The compare is split by
+portability: the **non-chart region** (everything Pillow draws) is bit-identical across
+machines and is checked tightly everywhere; the **matplotlib chart region** is only
+pixel-stable within one environment (BLAS/FreeType), so it is checked **only in CI**
+(`CI=true`) — that's what catches matplotlib/scipy/numpy bumps. On failure it uploads
+`actual.png` + `diff_mask.png` as the `visual-artifacts` CI artifact. To regenerate after an
+intended change, commit that CI `actual.png` as the new golden (a locally-rendered golden
+won't match CI's chart check).
+
 ## Development workflow (non-negotiable)
 
 This repo deploys itself: a push to `main` auto-versions, builds a Docker image, and
