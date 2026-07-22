@@ -36,7 +36,9 @@ services:
       - com.centurylinklabs.watchtower.enable=true
 
   watchtower:
-    image: containrrr/watchtower
+    # Actively maintained fork of the dormant containrrr/watchtower (last release
+    # 2023). Drop-in compatible: same flags, same com.centurylinklabs.* labels.
+    image: ghcr.io/nicholas-fedor/watchtower
     container_name: watchtower
     restart: unless-stopped
     volumes:
