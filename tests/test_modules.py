@@ -112,6 +112,29 @@ def test_forecast_with_days(fonts, icons_dir, background):
     _assert_cell(img)
 
 
+def test_day_label_by_date():
+    from datetime import date
+    from src.modules.forecast import day_label
+
+    today = date(2035, 6, 1)  # a Friday
+    assert day_label("2035-06-01", "Fri", today) == "heute"
+    assert day_label("2035-06-02", "Sat", today) == "morgen"
+    assert day_label("2035-06-03", "Sun", today) == "So"
+
+
+def test_day_label_late_evening_shift():
+    # After the last of today's forecast slots has passed (~22:00 local), the
+    # datasource's first day is already tomorrow: labels must follow the dates,
+    # not the column positions (heute/morgen/<Sa> would be one day off).
+    from datetime import date
+    from src.modules.forecast import day_label
+
+    today = date(2035, 5, 30)  # a Wednesday, forecast starts on Thursday
+    assert day_label("2035-05-31", "Thu", today) == "morgen"
+    assert day_label("2035-06-01", "Fri", today) == "Fr"
+    assert day_label("2035-06-02", "Sat", today) == "Sa"
+
+
 def test_forecast_single_day_no_separators(fonts, icons_dir):
     day = {"date": "2035-06-01", "weekday": "Fri", "temp_max": "20",
            "temp_min": "8", "rain_prob": "40", "midday_icon": ")"}

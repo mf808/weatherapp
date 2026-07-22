@@ -1,4 +1,6 @@
-from datetime import datetime
+import os
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw
 from src.modules.base import Module
@@ -10,6 +12,21 @@ GERMAN_DAY_LABELS = {
     "Mon": "Mo", "Tue": "Di", "Wed": "Mi",
     "Thu": "Do", "Fri": "Fr", "Sat": "Sa", "Sun": "So",
 }
+
+
+def day_label(date_str: str, weekday: str, today: date) -> str:
+    """Label a forecast day by its actual date, not its column position.
+
+    Late in the evening the datasource no longer has any slots for the current
+    day, so the first forecast day is already tomorrow — a positional "heute"
+    would mislabel every column by one day.
+    """
+    d = datetime.strptime(date_str, "%Y-%m-%d").date()
+    if d == today:
+        return "heute"
+    if d == today + timedelta(days=1):
+        return "morgen"
+    return GERMAN_DAY_LABELS.get(weekday, weekday)
 
 
 class ForecastModule(Module):
@@ -54,15 +71,12 @@ class ForecastModule(Module):
             draw.line([(sep_x, int(10 * sy)), (sep_x, int(285 * sy))],
                       fill=sep_color, width=1)
 
+        today = datetime.now(tz=ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))).date()
+
         for i, day in enumerate(forecast_days[:3]):
             cx = int(i * col_width + col_width / 2)
 
-            if i == 0:
-                label = "heute"
-            elif i == 1:
-                label = "morgen"
-            else:
-                label = GERMAN_DAY_LABELS.get(day["weekday"], day["weekday"])
+            label = day_label(day["date"], day["weekday"], today)
 
             dt = datetime.strptime(day["date"], "%Y-%m-%d")
             date_str = dt.strftime("%d.%m.")
