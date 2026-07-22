@@ -31,7 +31,7 @@ Content-Type: application/x-www-form-urlencoded;charset=UTF-8
 grant_type=authorization_code
 &client_id={{client_id}}
 &client_secret={{client_secret}}
-&code=c7063b0c41c169233561b58d13b7907a
+&code=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 &redirect_uri=https://localhost:8080
 &scope=read_station
 
