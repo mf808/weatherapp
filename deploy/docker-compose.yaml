@@ -3,9 +3,13 @@
 #
 # One-time setup on the NAS:
 #   1. Put this file at /volume3/docker/composers/weather/docker-compose.yaml
-#   2. Create /volume3/docker/composers/weather/.env with the secrets below and
-#      chmod 600 it. It must sit NEXT TO this compose file — docker compose only
-#      auto-loads .env from the project directory, not from the data volume.
+#   2. Create /volume3/docker/composers/weather/.env with the AZURE_* bootstrap
+#      credential below (from sp-nas-reader.env, see ../../azure/secrets-infra)
+#      and chmod 600 it. It must sit NEXT TO this compose file — docker compose
+#      only auto-loads .env from the project directory, not from the data volume.
+#      The entrypoint (entrypoint.py) uses this to fetch the real app secrets
+#      from Key Vault at every container start — nothing else needs to go in
+#      this .env.
 #   3. docker compose pull && docker compose up -d
 #
 # Auto-deploy: Watchtower runs as its own compose project on the NAS
@@ -28,11 +32,9 @@ services:
     ports:
       - 81:8080
     environment:
-      - CLIENT_ID=${CLIENT_ID}
-      - CLIENT_SECRET=${CLIENT_SECRET}
-      - DEVICE_ID=${DEVICE_ID}
-      - OUTDOOMODULE_ID=${OUTDOOMODULE_ID}
-      - OPENWEATHERMAP_APPID=${OPENWEATHERMAP_APPID}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
       - TZ=Europe/Berlin
     mem_limit: 128M
     mem_reservation: 64M
