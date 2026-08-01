@@ -1,5 +1,8 @@
 import sys
 
+import pytest
+import requests
+
 import entrypoint
 
 AZURE_ENV_VARS = ("AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET")
@@ -30,6 +33,35 @@ def _patch_exec(monkeypatch):
     monkeypatch.setattr(entrypoint.os, "execvp", lambda file, args: execed.update(file=file, args=args))
     monkeypatch.setattr(sys, "argv", ["entrypoint.py", "python", "-m", "src.server"])
     return execed
+
+
+def test_retry_recovers_from_transient_failure(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(entrypoint.time, "sleep", lambda s: sleeps.append(s))
+
+    calls = {"n": 0}
+
+    def flaky(x):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise requests.ConnectionError("transient")
+        return "ok"
+
+    result = entrypoint._retry(flaky, "arg")
+
+    assert result == "ok"
+    assert calls["n"] == 3
+    assert sleeps == [1, 2]  # exponential backoff, one sleep per failed attempt
+
+
+def test_retry_gives_up_after_max_attempts(monkeypatch):
+    monkeypatch.setattr(entrypoint.time, "sleep", lambda s: None)
+
+    def always_fails():
+        raise requests.ConnectionError("persistent")
+
+    with pytest.raises(requests.ConnectionError):
+        entrypoint._retry(always_fails)
 
 
 def test_no_bootstrap_credential_skips_vault_and_execs_directly(monkeypatch):

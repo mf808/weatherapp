@@ -13,15 +13,27 @@ just on expiry). So the vault's copy is a point-in-time disaster-recovery
 seed, not a live mirror — overwriting an already-present creds.json here
 would clobber a valid rotated token with a stale one and break Netatmo auth.
 Only write it if the file doesn't already exist.
+
+Network calls retry a bounded number of times with exponential backoff, to
+ride out a brief Azure hiccup without failing the container over it. If all
+attempts fail, the exception propagates and the process exits non-zero —
+Docker's `restart: unless-stopped` then keeps retrying the container
+indefinitely with its own backoff, so a longer outage still recovers on its
+own once Azure is reachable again, it just becomes a visible restart loop
+instead of a silent infinite wait inside this script.
 """
 import os
 import sys
+import time
 
 import requests
 
 VAULT_NAME = "kv-basswarp-secrets"
 VAULT_URL = f"https://{VAULT_NAME}.vault.azure.net"
 SECRET_API_VERSION = "7.4"
+
+MAX_ATTEMPTS = 5
+BACKOFF_BASE_SECONDS = 1  # 1, 2, 4, 8, 16
 
 SECRET_TO_ENV_VAR = {
     "nas-weatherapp-netatmo-client-id": "CLIENT_ID",
@@ -33,6 +45,18 @@ SECRET_TO_ENV_VAR = {
 
 CREDS_JSON_SECRET = "nas-weatherapp-creds-json"
 CREDS_JSON_PATH = "/app/creds.json"
+
+
+def _retry(func, *args, **kwargs):
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            return func(*args, **kwargs)
+        except requests.RequestException as e:
+            if attempt == MAX_ATTEMPTS - 1:
+                raise
+            wait = BACKOFF_BASE_SECONDS * (2 ** attempt)
+            print(f"entrypoint: attempt {attempt + 1}/{MAX_ATTEMPTS} failed ({e}), retrying in {wait}s", file=sys.stderr)
+            time.sleep(wait)
 
 
 def get_token(tenant_id: str, client_id: str, client_secret: str) -> str:
@@ -71,16 +95,16 @@ def main():
         os.execvp(sys.argv[1], sys.argv[1:])
         return
 
-    token = get_token(tenant_id, client_id, client_secret)
+    token = _retry(get_token, tenant_id, client_id, client_secret)
 
     for secret_name, env_var in SECRET_TO_ENV_VAR.items():
-        os.environ[env_var] = get_secret(token, secret_name)
+        os.environ[env_var] = _retry(get_secret, token, secret_name)
 
     if os.path.exists(CREDS_JSON_PATH) and os.path.getsize(CREDS_JSON_PATH) > 0:
         print(f"entrypoint: {CREDS_JSON_PATH} already present, leaving as-is", file=sys.stderr)
     else:
         print(f"entrypoint: {CREDS_JSON_PATH} missing, seeding from vault", file=sys.stderr)
-        value = get_secret(token, CREDS_JSON_SECRET)
+        value = _retry(get_secret, token, CREDS_JSON_SECRET)
         fd = os.open(CREDS_JSON_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(value)
