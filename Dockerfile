@@ -20,4 +20,5 @@ COPY --chown=appuser:appuser . .
 
 EXPOSE 8080
 
+ENTRYPOINT ["python", "entrypoint.py"]
 CMD ["python", "-m", "src.server"]
