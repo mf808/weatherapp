@@ -28,6 +28,7 @@ services:
     volumes:
       - /volume3/docker/weather/data/config.yaml:/app/config.yaml:ro
       - /volume3/docker/weather/data/creds.json:/app/creds.json:rw
+      - /volume3/docker/weather/data/last_good_netatmo.json:/app/last_good_netatmo.json:rw
       - /volume3/docker/weather/data/weather-script-output.png:/app/weather-script-output.png:rw
     ports:
       - 81:8080

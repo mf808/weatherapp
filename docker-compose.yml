@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./creds.json:/app/creds.json:rw
+      - ./last_good_netatmo.json:/app/last_good_netatmo.json:rw
       - ./output:/app/output:rw
     environment:
       # Required — secrets and device identifiers

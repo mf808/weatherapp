@@ -86,6 +86,27 @@ def render(config: dict, all_data: dict, fonts: FontRegistry, icons_dir: str) ->
     draw = ImageDraw.Draw(img)
     draw.text((wm_x, wm_y), now_str, font=wm_font, fill=(180, 180, 180))
 
+    # Stale-data banner — directly above the timestamp watermark, same horizontal
+    # centering, so it lands in the same corner of the final (rotated) display that
+    # the watermark is already known to render in correctly. Only drawn when a
+    # datasource fell back to a cached last-known-good reading (see
+    # NetatmoSource._fallback()) instead of a fresh one.
+    stale_meta = (all_data or {}).get("netatmo", {}).get("_stale")
+    if stale_meta:
+        as_of = stale_meta.get("as_of")
+        try:
+            as_of_str = datetime.fromtimestamp(as_of, tz=ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))).strftime("%H:%M")
+        except (TypeError, ValueError, OSError):
+            as_of_str = "?"
+        stale_text = f"Netatmo-Daten von {as_of_str} – nicht aktuell"
+        stale_font = fonts.scaled(fonts.text_medium, 12)
+        stale_bbox = stale_font.getbbox(stale_text)
+        stale_w = stale_bbox[2] - stale_bbox[0]
+        stale_h = stale_bbox[3] - stale_bbox[1]
+        stale_x = mid_center_x - stale_w // 2
+        stale_y = wm_y - stale_h - 6
+        draw.text((stale_x, stale_y), stale_text, font=stale_font, fill=(90, 90, 90))
+
     # Apply device-specific post-processing
     if device_cfg.get("rotation"):
         img = apply_rotation(img, device_cfg["rotation"])
