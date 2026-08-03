@@ -34,7 +34,7 @@ def _status_code(exc: Exception) -> int | None:
 
 
 def _log_step_failure(step: str, exc: Exception):
-    """Log which of the (token refresh / devicelist / 6h history) calls failed and
+    """Log which of the (token refresh / stations data / 6h history) calls failed and
     with what HTTP status, if any - never exc's message/str(): HTTPError text embeds
     the full request URL, which carries device/module IDs as query parameters.
     """
@@ -182,9 +182,14 @@ class NetatmoSource(DataSource):
             "Authorization": f"Bearer {self._access_token}",
         }
 
-    def _fetch_devicelist(self) -> dict:
+    def _fetch_stations_data(self) -> dict:
+        # devicelist was Netatmo's older endpoint for this - it has been shut down
+        # (confirmed returning HTTP 503 on every call in production), getstationsdata
+        # is the replacement. Same overall response shape (body.devices[], each with
+        # dashboard_data), with one structural difference: modules live nested under
+        # each device (body.devices[i].modules) instead of a flat body.modules list.
         resp = safe_get(
-            f"{self.api_base}/api/devicelist",
+            f"{self.api_base}/api/getstationsdata",
             headers=self._headers(),
         )
         return resp.json()
@@ -272,14 +277,13 @@ class NetatmoSource(DataSource):
             return self._fallback()
 
         try:
-            devicelist = self._fetch_devicelist()
+            stations_data = self._fetch_stations_data()
         except Exception as e:
-            _log_step_failure("devicelist fetch", e)
+            _log_step_failure("stations data fetch", e)
             return self._fallback()
 
-        body = devicelist.get("body", {})
+        body = stations_data.get("body", {})
         devices = body.get("devices", [])
-        modules_raw = body.get("modules", [])[:MAX_MODULES]
 
         if not devices:
             log.warning("Netatmo: no devices found in response")
@@ -289,6 +293,11 @@ class NetatmoSource(DataSource):
 
         base_data = self._parse_base(devices[0])
         result[base_data["name"]] = base_data
+
+        # getstationsdata nests modules under the device (unlike the old devicelist,
+        # which had a flat body.modules list) - modules belong only to devices[0]
+        # since this app only ever configures a single station.
+        modules_raw = devices[0].get("modules", [])[:MAX_MODULES]
 
         outdoor_name = None
         for mod in modules_raw:
