@@ -77,6 +77,13 @@ def test_room_climate_empty_and_nonnumeric(fonts, icons_dir):
     _assert_cell(RoomClimateModule().render(W, H, {"co2": "", "humidity": "--"}, fonts, icons_dir))
 
 
+def test_room_climate_empty_data(fonts, icons_dir):
+    # completely missing cell data (e.g. failed fetch, no last-known-good cache
+    # either) takes the "--" branch, not the misleading "Gut" (which would look
+    # like a real good-air-quality reading).
+    _assert_cell(RoomClimateModule().render(W, H, {}, fonts, icons_dir))
+
+
 def test_temperature_chart_no_data(fonts, icons_dir):
     _assert_cell(TemperatureChartModule().render(W, H, {"temperatures": []}, fonts, icons_dir))
 

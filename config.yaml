@@ -39,6 +39,10 @@ datasources:
     outdoor_module_id: ${OUTDOOMODULE_ID}
     history_scale: 30min
     history_limit: 12
+    # Snapshot of the last successful fetch, used to bridge a temporary Netatmo
+    # API failure (rate limit, timeout, brief outage) instead of showing zeroed-out
+    # readings - see NetatmoSource._fallback(). Discarded once older than 6h.
+    last_good_file: last_good_netatmo.json
 
   openweathermap:
     type: openweathermap

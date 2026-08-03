@@ -23,6 +23,24 @@ BATTERY_THRESHOLDS = {
 CREDS_FILE_MODE = 0o600
 MAX_CREDS_BYTES = 10 * 1024  # 10 KB — tokens should never be larger
 MAX_MODULES = 50  # sanity cap on number of modules to process
+LAST_GOOD_FILE_MODE = 0o600
+MAX_LAST_GOOD_BYTES = 20 * 1024  # 20 KB — a full sensor snapshot is small, sanity cap only
+LAST_GOOD_MAX_AGE_SECONDS = 6 * 3600  # older than this, prefer honest "no data" over a stale reading
+
+
+def _status_code(exc: Exception) -> int | None:
+    """Extract the HTTP status code from a requests.HTTPError, if any."""
+    return getattr(getattr(exc, "response", None), "status_code", None)
+
+
+def _log_step_failure(step: str, exc: Exception):
+    """Log which of the (token refresh / devicelist / 6h history) calls failed and
+    with what HTTP status, if any - never exc's message/str(): HTTPError text embeds
+    the full request URL, which carries device/module IDs as query parameters.
+    """
+    status = _status_code(exc)
+    suffix = f" (HTTP {status})" if status is not None else ""
+    log.warning("Netatmo %s failed: %s%s", step, type(exc).__name__, suffix)
 
 
 def _battery_status(module_type: str, battery_vp: int) -> str:
@@ -62,6 +80,7 @@ class NetatmoSource(DataSource):
         self.client_secret = resolve_env(config["client_secret"])
         self.history_scale = config.get("history_scale", "30min")
         self.history_limit = config.get("history_limit", 12)
+        self.last_good_file = config.get("last_good_file", "last_good_netatmo.json")
         self.timezone = timezone
         self._access_token: str | None = None
 
@@ -110,6 +129,52 @@ class NetatmoSource(DataSource):
             raise RuntimeError("API did not return valid tokens")
         self._write_creds(new_creds)
         self._access_token = new_creds["access_token"]
+
+    def _read_last_good(self) -> tuple[dict, float] | None:
+        """Return (data, fetched_at) from the last successful fetch(), or None if
+        missing/corrupt/older than LAST_GOOD_MAX_AGE_SECONDS."""
+        try:
+            with open(self.last_good_file) as f:
+                cached = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return None
+        data = cached.get("data")
+        fetched_at = cached.get("fetched_at")
+        if not isinstance(data, dict) or not isinstance(fetched_at, (int, float)):
+            return None
+        if time.time() - fetched_at > LAST_GOOD_MAX_AGE_SECONDS:
+            return None
+        return data, fetched_at
+
+    def _write_last_good(self, data: dict):
+        """Persist a successful fetch() result to disk, so a later failure can fall
+        back to it (see _fallback()) instead of showing blank/zeroed-out data."""
+        payload = json.dumps({"fetched_at": time.time(), "data": data})
+        if len(payload.encode()) > MAX_LAST_GOOD_BYTES:
+            log.warning("Last-known-good snapshot too large, not persisting")
+            return
+        try:
+            fd = os.open(self.last_good_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, LAST_GOOD_FILE_MODE)
+            with os.fdopen(fd, "w") as f:
+                f.write(payload)
+        except OSError as e:
+            log.warning("Could not persist last-known-good Netatmo data: %s", type(e).__name__)
+
+    def _fallback(self) -> dict:
+        """What to return when the API call(s) needed for a fresh reading fail.
+
+        Prefers a recent last-known-good snapshot (marked '_stale' so the renderer
+        can show a banner) over blank data - a temporary Netatmo hiccup shouldn't
+        make the display flash to zeroed-out readings every time it happens.
+        """
+        cached = self._read_last_good()
+        if cached is not None:
+            data, fetched_at = cached
+            log.warning("Netatmo fetch failed, falling back to last-known-good data from %s", _safe_timestamp(fetched_at))
+            result = dict(data)
+            result["_stale"] = {"as_of": fetched_at}
+            return result
+        return {"outdoor_history": {"temperatures": []}}
 
     def _headers(self) -> dict:
         return {
@@ -200,16 +265,25 @@ class NetatmoSource(DataSource):
         return result
 
     def fetch(self) -> dict:
-        self._refresh_tokens()
+        try:
+            self._refresh_tokens()
+        except Exception as e:
+            _log_step_failure("token refresh", e)
+            return self._fallback()
 
-        devicelist = self._fetch_devicelist()
+        try:
+            devicelist = self._fetch_devicelist()
+        except Exception as e:
+            _log_step_failure("devicelist fetch", e)
+            return self._fallback()
+
         body = devicelist.get("body", {})
         devices = body.get("devices", [])
         modules_raw = body.get("modules", [])[:MAX_MODULES]
 
         if not devices:
             log.warning("Netatmo: no devices found in response")
-            return {"outdoor_history": {"temperatures": []}}
+            return self._fallback()
 
         result = {}
 
@@ -230,9 +304,8 @@ class NetatmoSource(DataSource):
             temps = self._fetch_6h_history()
             result["outdoor_history"] = {"temperatures": temps}
         except requests.RequestException as e:
-            # Log only the exception type: requests errors embed the full URL,
-            # which carries device/module MAC addresses as query parameters.
-            log.warning("Could not fetch 6h history: %s", type(e).__name__)
+            _log_step_failure("6h history fetch", e)
             result["outdoor_history"] = {"temperatures": []}
 
+        self._write_last_good(result)
         return result

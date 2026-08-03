@@ -59,7 +59,9 @@ class FakeResponse:
     def raise_for_status(self):
         if self.status_code >= 400:
             import requests
-            raise requests.HTTPError(f"status {self.status_code}")
+            err = requests.HTTPError(f"status {self.status_code}")
+            err.response = self  # matches real requests.Response.raise_for_status()
+            raise err
 
     def close(self):
         self.closed = True

@@ -54,11 +54,15 @@ Key things to configure:
 - `layout:` — rearrange modules, change grid proportions
 - `datasources.netatmo.history_scale` / `history_limit` — chart data resolution
 
-### 4. Create an empty output file
+### 4. Create empty output/cache files
 
 ```bash
 touch /path/to/data/weather-script-output.png
+touch /path/to/data/last_good_netatmo.json
 ```
+
+`last_good_netatmo.json` caches the last successful Netatmo reading (up to 6h old) so a
+temporary API hiccup shows a "stale data" banner instead of blanking the display to zero.
 
 ## Docker Deployment
 
@@ -73,6 +77,7 @@ services:
     volumes:
       - /path/to/data/config.yaml:/app/config.yaml:ro
       - /path/to/data/creds.json:/app/creds.json:rw
+      - /path/to/data/last_good_netatmo.json:/app/last_good_netatmo.json:rw
       - /path/to/data/weather-script-output.png:/app/weather-script-output.png:rw
     ports:
       - 81:8080
@@ -149,4 +154,5 @@ To add a new Netatmo sensor, add a `room_climate` cell with the sensor's name as
 - **Stale image**: check that the cron/trigger is running and hitting `GET /`
 - **Expired tokens**: recreate at <https://dev.netatmo.com/apps/> and update `creds.json`
 - **Sensor offline**: if a module shows `--`, the sensor has lost connection to the base station (check battery/RF signal)
+- **"Netatmo-Daten von HH:MM – nicht aktuell" banner**: the current Netatmo fetch failed (rate limit, timeout, brief API outage) and the display fell back to the last successful reading (up to 6h old, see `NetatmoSource._fallback()`). Check `docker logs weather` for the specific failed step (token refresh / devicelist / 6h history) and HTTP status — if it clears up on its own within a few cycles, no action needed. If it persists past 6h, the display reverts to honest `--`/"Keine Daten" instead of showing an increasingly stale reading.
 - **Container logs**: `docker logs weather`

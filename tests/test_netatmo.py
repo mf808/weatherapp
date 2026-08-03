@@ -1,14 +1,18 @@
 import json
+from pathlib import Path
 
 import pytest
+import requests
 
 from conftest import FakeResponse
 from src.datasources import netatmo
 from src.datasources.netatmo import (
     NetatmoSource,
     _battery_status,
+    _log_step_failure,
     _safe_float,
     _safe_timestamp,
+    _status_code,
 )
 
 
@@ -119,15 +123,21 @@ def creds_file(tmp_path):
     return p
 
 
-def _source(creds_file):
-    return NetatmoSource({
+def _source(creds_file, **overrides):
+    # last_good_file defaults into the SAME tmp_path as creds_file, never the bare
+    # relative default - otherwise tests would read/write a real file in the repo's
+    # working directory and leak state between test runs.
+    config = {
         "api_base": "https://api.example.com",
         "creds_file": str(creds_file),
         "device_id": "dev-1",
         "outdoor_module_id": "mod-1",
         "client_id": "cid",
         "client_secret": "csecret",
-    })
+        "last_good_file": str(Path(creds_file).parent / "last_good_netatmo.json"),
+    }
+    config.update(overrides)
+    return NetatmoSource(config)
 
 
 DEVICELIST = {
@@ -252,3 +262,151 @@ def test_read_creds_tightens_loose_permissions(tmp_path):
     os.chmod(p, 0o644)
     _source(p)._read_creds()
     assert stat.S_IMODE(p.stat().st_mode) == netatmo.CREDS_FILE_MODE  # 0o600
+
+
+# ── HTTP status extraction / step-failure logging ───────────────
+
+def test_status_code_extracts_from_http_error():
+    resp = FakeResponse({}, status_code=429)
+    with pytest.raises(requests.HTTPError) as exc_info:
+        resp.raise_for_status()
+    assert _status_code(exc_info.value) == 429
+
+
+def test_status_code_none_for_non_http_exception():
+    assert _status_code(requests.ConnectTimeout()) is None
+
+
+def test_log_step_failure_includes_status_code(caplog):
+    resp = FakeResponse({}, status_code=429)
+    with caplog.at_level("WARNING"), pytest.raises(requests.HTTPError) as exc_info:
+        resp.raise_for_status()
+    _log_step_failure("devicelist fetch", exc_info.value)
+    assert "devicelist fetch failed: HTTPError (HTTP 429)" in caplog.text
+
+
+def test_log_step_failure_omits_status_when_absent(caplog):
+    with caplog.at_level("WARNING"):
+        _log_step_failure("token refresh", requests.ConnectTimeout())
+    assert "token refresh failed: ConnectTimeout" in caplog.text
+    assert "HTTP" not in caplog.text
+
+
+# ── last-known-good cache ─────────────────────────────────────────
+
+def test_last_good_round_trip(creds_file):
+    src = _source(creds_file)
+    src._write_last_good({"outdoor": {"temp": "12.3"}})
+    data, fetched_at = src._read_last_good()
+    assert data == {"outdoor": {"temp": "12.3"}}
+    assert isinstance(fetched_at, float)
+
+
+def test_last_good_missing_file_returns_none(creds_file):
+    assert _source(creds_file)._read_last_good() is None
+
+
+def test_last_good_corrupt_file_returns_none(creds_file):
+    src = _source(creds_file)
+    Path(src.last_good_file).write_text("not json")
+    assert src._read_last_good() is None
+
+
+def test_last_good_expired_returns_none(monkeypatch, creds_file):
+    src = _source(creds_file)
+    monkeypatch.setattr(netatmo.time, "time", lambda: 1_000_000)
+    src._write_last_good({"outdoor": {"temp": "12.3"}})
+    monkeypatch.setattr(netatmo.time, "time", lambda: 1_000_000 + netatmo.LAST_GOOD_MAX_AGE_SECONDS + 1)
+    assert src._read_last_good() is None
+
+
+def test_last_good_just_within_max_age_is_kept(monkeypatch, creds_file):
+    src = _source(creds_file)
+    monkeypatch.setattr(netatmo.time, "time", lambda: 1_000_000)
+    src._write_last_good({"outdoor": {"temp": "12.3"}})
+    monkeypatch.setattr(netatmo.time, "time", lambda: 1_000_000 + netatmo.LAST_GOOD_MAX_AGE_SECONDS)
+    assert src._read_last_good() is not None
+
+
+def test_write_last_good_rejects_oversized_payload(creds_file, caplog):
+    src = _source(creds_file)
+    with caplog.at_level("WARNING"):
+        src._write_last_good({"blob": "x" * netatmo.MAX_LAST_GOOD_BYTES})
+    assert "too large" in caplog.text
+    assert not Path(src.last_good_file).exists()
+
+
+# ── fetch() falls back to last-known-good on failure ─────────────
+
+def test_fetch_persists_last_good_on_success(monkeypatch, creds_file):
+    _install_http(monkeypatch)
+    src = _source(creds_file)
+    src.fetch()
+    saved = json.loads(Path(src.last_good_file).read_text())
+    assert saved["data"]["outdoor"]["temp"] == "12.3"
+    assert isinstance(saved["fetched_at"], (int, float))
+
+
+def test_fetch_falls_back_to_last_good_on_token_refresh_failure(monkeypatch, creds_file):
+    src = _source(creds_file)
+    _install_http(monkeypatch)
+    src.fetch()  # seeds last_good_file with a real successful snapshot
+
+    def failing_post(url, **kwargs):
+        raise requests.HTTPError("boom")
+    monkeypatch.setattr(netatmo, "safe_post", failing_post)
+
+    result = src.fetch()
+    assert result["outdoor"]["temp"] == "12.3"
+    assert result["_stale"]["as_of"] > 0
+
+
+def test_fetch_falls_back_to_last_good_on_devicelist_failure(monkeypatch, creds_file):
+    src = _source(creds_file)
+    _install_http(monkeypatch)
+    src.fetch()
+
+    def failing_get(url, **kwargs):
+        raise requests.ConnectTimeout()
+    monkeypatch.setattr(netatmo, "safe_get", failing_get)
+
+    result = src.fetch()
+    assert result["outdoor"]["temp"] == "12.3"
+    assert "_stale" in result
+
+
+def test_fetch_no_devices_falls_back_to_last_good(monkeypatch, creds_file):
+    src = _source(creds_file)
+    _install_http(monkeypatch)
+    src.fetch()
+
+    _install_http(monkeypatch, devicelist={"body": {"devices": [], "modules": []}})
+    result = src.fetch()
+    assert result["outdoor"]["temp"] == "12.3"
+    assert "_stale" in result
+
+
+def test_fetch_failure_without_any_cache_returns_empty(monkeypatch, creds_file):
+    def failing_post(url, **kwargs):
+        raise requests.ConnectTimeout()
+    monkeypatch.setattr(netatmo, "safe_post", failing_post)
+
+    result = _source(creds_file).fetch()
+    assert result == {"outdoor_history": {"temperatures": []}}
+    assert "_stale" not in result
+
+
+def test_fetch_failure_ignores_expired_cache(monkeypatch, creds_file):
+    src = _source(creds_file)
+    monkeypatch.setattr(netatmo.time, "time", lambda: 1_000_000)
+    _install_http(monkeypatch)
+    src.fetch()
+
+    def failing_post(url, **kwargs):
+        raise requests.ConnectTimeout()
+    monkeypatch.setattr(netatmo, "safe_post", failing_post)
+    monkeypatch.setattr(netatmo.time, "time", lambda: 1_000_000 + netatmo.LAST_GOOD_MAX_AGE_SECONDS + 1)
+
+    result = src.fetch()
+    assert result == {"outdoor_history": {"temperatures": []}}
+    assert "_stale" not in result

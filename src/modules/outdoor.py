@@ -37,8 +37,10 @@ class OutdoorModule(Module):
         draw.text((int(80 * sx), int(130 * sy)), weather_glyph,
                   font=font_icon, fill=colors.fg, anchor="ls")
 
-        # Temperature
-        temp_str = data.get("temp", "0.0")
+        # Temperature — "--" (not "0.0") when data is entirely missing (e.g. a
+        # datasource fetch failure with no last-known-good cache available either),
+        # so a real 0.0°C reading is never confused with "we have no reading at all".
+        temp_str = data.get("temp", "--")
         font_temp = fonts.scaled(fonts.text_bold, 45 * sy)
         font_deg = fonts.scaled(fonts.symbol, 45 * sy)
         font_trend = fonts.scaled(fonts.symbol, 20 * sy)

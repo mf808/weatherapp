@@ -24,8 +24,9 @@ class RoomClimateModule(Module):
         bat_icon = load_battery_icon(icons_dir, data.get("battery_status", "full"), bat_size, invert=colors.is_dark)
         img.paste(bat_icon, (int(230 * sx), 0), bat_icon)
 
-        # Temperature
-        temp_str = data.get("temp", "0.0")
+        # Temperature — "--" (not "0.0") when data is entirely missing, so a real
+        # 0.0°C reading is never confused with "we have no reading at all".
+        temp_str = data.get("temp", "--")
         font_temp = fonts.scaled(fonts.text_bold, 45 * sy)
         font_deg = fonts.scaled(fonts.symbol, 45 * sy)
         font_trend = fonts.scaled(fonts.symbol, 20 * sy)
@@ -60,7 +61,12 @@ class RoomClimateModule(Module):
         font_status = fonts.scaled(fonts.text_bold, 40 * sy)
         font_label = fonts.scaled(fonts.text_medium, 15 * sy)
 
-        if co2_val > 1200 or hum_val > 60:
+        if not data:
+            # No reading at all for this room (missing cell data) - "Gut" would
+            # falsely look like a real "good air quality" reading, not an absence.
+            status_text = "--"
+            status_x = int(90 * sx)
+        elif co2_val > 1200 or hum_val > 60:
             status_text = "L\u00fcften"
             status_x = int(57 * sx)
         else:

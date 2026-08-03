@@ -73,6 +73,20 @@ def test_render_unknown_module_is_skipped(fonts, icons_dir):
     assert img.size == (400, 200)
 
 
+def test_render_shows_stale_banner_when_netatmo_data_is_marked_stale(fonts, icons_dir):
+    data_stale = {**DATA, "netatmo": {**DATA["netatmo"], "_stale": {"as_of": 0}}}
+    img_fresh = render(CONFIG, DATA, fonts, icons_dir)
+    img_stale = render(CONFIG, data_stale, fonts, icons_dir)
+    assert img_fresh.tobytes() != img_stale.tobytes()
+
+
+def test_render_stale_banner_survives_missing_as_of(fonts, icons_dir):
+    """A malformed/missing 'as_of' must not crash the render - falls back to '?'."""
+    data_stale = {**DATA, "netatmo": {**DATA["netatmo"], "_stale": {}}}
+    img = render(CONFIG, data_stale, fonts, icons_dir)
+    assert img.size == (600, 800)
+
+
 def test_all_registered_modules_are_importable():
     # Guards against a registry entry pointing at a missing/renamed class.
     assert set(MODULE_REGISTRY) == {
