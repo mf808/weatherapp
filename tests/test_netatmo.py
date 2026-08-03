@@ -140,7 +140,9 @@ def _source(creds_file, **overrides):
     return NetatmoSource(config)
 
 
-DEVICELIST = {
+# getstationsdata nests modules under each device (unlike the old, now-shut-down
+# devicelist, which had a flat body.modules list) - see NetatmoSource._fetch_stations_data().
+STATIONS_DATA = {
     "body": {
         "devices": [{
             "module_name": "Base",
@@ -148,15 +150,15 @@ DEVICELIST = {
                 "Temperature": 21.5, "Humidity": 45, "CO2": 600,
                 "Pressure": 1013.2, "pressure_trend": "up", "time_utc": 0,
             },
-        }],
-        "modules": [{
-            "type": "NAModule1",
-            "module_name": "Outdoor",
-            "battery_vp": 5200,
-            "dashboard_data": {
-                "Temperature": 12.3, "Humidity": 80,
-                "temp_trend": "down", "time_utc": 0,
-            },
+            "modules": [{
+                "type": "NAModule1",
+                "module_name": "Outdoor",
+                "battery_vp": 5200,
+                "dashboard_data": {
+                    "Temperature": 12.3, "Humidity": 80,
+                    "temp_trend": "down", "time_utc": 0,
+                },
+            }],
         }],
     }
 }
@@ -164,13 +166,13 @@ DEVICELIST = {
 HISTORY = {"body": [{"value": [[10.0], [10.5], [11.0]]}]}
 
 
-def _install_http(monkeypatch, *, devicelist=DEVICELIST, history=HISTORY):
+def _install_http(monkeypatch, *, stationsdata=STATIONS_DATA, history=HISTORY):
     def fake_post(url, **kwargs):
         return FakeResponse({"access_token": "new-access", "refresh_token": "new-refresh"})
 
     def fake_get(url, **kwargs):
-        if "devicelist" in url:
-            return FakeResponse(devicelist)
+        if "getstationsdata" in url:
+            return FakeResponse(stationsdata)
         if "getmeasure" in url:
             return FakeResponse(history)
         raise AssertionError(f"unexpected GET {url}")
@@ -199,7 +201,7 @@ def test_fetch_refreshes_and_persists_tokens(monkeypatch, creds_file):
 
 
 def test_fetch_handles_no_devices(monkeypatch, creds_file):
-    _install_http(monkeypatch, devicelist={"body": {"devices": [], "modules": []}})
+    _install_http(monkeypatch, stationsdata={"body": {"devices": []}})
     result = _source(creds_file).fetch()
     assert result == {"outdoor_history": {"temperatures": []}}
 
@@ -281,8 +283,8 @@ def test_log_step_failure_includes_status_code(caplog):
     resp = FakeResponse({}, status_code=429)
     with caplog.at_level("WARNING"), pytest.raises(requests.HTTPError) as exc_info:
         resp.raise_for_status()
-    _log_step_failure("devicelist fetch", exc_info.value)
-    assert "devicelist fetch failed: HTTPError (HTTP 429)" in caplog.text
+    _log_step_failure("stations data fetch", exc_info.value)
+    assert "stations data fetch failed: HTTPError (HTTP 429)" in caplog.text
 
 
 def test_log_step_failure_omits_status_when_absent(caplog):
@@ -361,7 +363,7 @@ def test_fetch_falls_back_to_last_good_on_token_refresh_failure(monkeypatch, cre
     assert result["_stale"]["as_of"] > 0
 
 
-def test_fetch_falls_back_to_last_good_on_devicelist_failure(monkeypatch, creds_file):
+def test_fetch_falls_back_to_last_good_on_stations_data_failure(monkeypatch, creds_file):
     src = _source(creds_file)
     _install_http(monkeypatch)
     src.fetch()
@@ -380,7 +382,7 @@ def test_fetch_no_devices_falls_back_to_last_good(monkeypatch, creds_file):
     _install_http(monkeypatch)
     src.fetch()
 
-    _install_http(monkeypatch, devicelist={"body": {"devices": [], "modules": []}})
+    _install_http(monkeypatch, stationsdata={"body": {"devices": []}})
     result = src.fetch()
     assert result["outdoor"]["temp"] == "12.3"
     assert "_stale" in result
