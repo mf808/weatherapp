@@ -13,9 +13,10 @@ CONFIG = {
     "layout": {
         "rows": [
             {"height": 0.5, "background": "white", "cells": [
-                {"width": 0.5, "module": "outdoor", "source": "netatmo", "source_key": "outdoor",
+                {"width": 0.34, "module": "outdoor", "source": "netatmo", "source_key": "outdoor",
                  "params": {"weather_source": "owm", "weather_key": "current"}},
-                {"width": 0.5, "module": "forecast", "params": {"forecast_source": "owm"}},
+                {"width": 0.33, "module": "temperature_chart", "source": "netatmo", "source_key": "outdoor_history"},
+                {"width": 0.33, "module": "forecast", "params": {"forecast_source": "owm"}},
             ]},
             {"height": 0.5, "background": "black", "cells": [
                 {"width": 0.5, "module": "room_climate", "source": "netatmo", "source_key": "Kinderzimmer"},
@@ -29,6 +30,7 @@ DATA = {
     "netatmo": {
         "outdoor": {"name": "Out", "temp": "12.3", "temp_trend": "up", "humidity": 70,
                     "battery_status": "full", "pressure": 1013.2},
+        "outdoor_history": {"temperatures": [10.0, 10.5, 11.0]},
         "Kinderzimmer": {"name": "Kind", "temp": "21.0", "co2": 500, "humidity": 45,
                          "battery_status": "full"},
     },
@@ -84,6 +86,20 @@ def test_render_stale_banner_survives_missing_as_of(fonts, icons_dir):
     """A malformed/missing 'as_of' must not crash the render - falls back to '?'."""
     data_stale = {**DATA, "netatmo": {**DATA["netatmo"], "_stale": {}}}
     img = render(CONFIG, data_stale, fonts, icons_dir)
+    assert img.size == (600, 800)
+
+
+def test_render_stale_without_chart_cell_does_not_crash(fonts, icons_dir):
+    """A layout with no temperature_chart cell has nowhere to anchor the banner -
+    must render normally instead of crashing (chart_cell_bounds stays None)."""
+    cfg = {
+        **CONFIG,
+        "layout": {"rows": [{"height": 1.0, "background": "white", "cells": [
+            {"width": 1.0, "module": "outdoor", "source": "netatmo", "source_key": "outdoor"},
+        ]}]},
+    }
+    data_stale = {**DATA, "netatmo": {**DATA["netatmo"], "_stale": {"as_of": 0}}}
+    img = render(cfg, data_stale, fonts, icons_dir)
     assert img.size == (600, 800)
 
 

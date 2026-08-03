@@ -33,6 +33,7 @@ def render(config: dict, all_data: dict, fonts: FontRegistry, icons_dir: str) ->
 
     layout = config["layout"]
     y_offset = 0
+    chart_cell_bounds = None  # (x, y, width, height) of the temperature_chart cell, if present
 
     for row in layout["rows"]:
         row_height = int(height * row["height"])
@@ -70,6 +71,8 @@ def render(config: dict, all_data: dict, fonts: FontRegistry, icons_dir: str) ->
             )
 
             img.paste(cell_img, (x_offset, y_offset))
+            if module_name == "temperature_chart":
+                chart_cell_bounds = (x_offset, y_offset, cell_width, row_height)
             x_offset += cell_width
 
         y_offset += row_height
@@ -86,26 +89,37 @@ def render(config: dict, all_data: dict, fonts: FontRegistry, icons_dir: str) ->
     draw = ImageDraw.Draw(img)
     draw.text((wm_x, wm_y), now_str, font=wm_font, fill=(180, 180, 180))
 
-    # Stale-data banner — directly above the timestamp watermark, same horizontal
-    # centering, so it lands in the same corner of the final (rotated) display that
-    # the watermark is already known to render in correctly. Only drawn when a
-    # datasource fell back to a cached last-known-good reading (see
-    # NetatmoSource._fallback()) instead of a fresh one.
+    # Stale-data banner — a solid black bar with bold white text, pinned to the
+    # bottom edge of the temperature_chart cell (drawn last, on top of that cell's
+    # already-pasted content, so it never spills into the row below and overlaps
+    # the room panels). Only drawn when a datasource fell back to a cached
+    # last-known-good reading (see NetatmoSource._fallback()) instead of a fresh one.
     stale_meta = (all_data or {}).get("netatmo", {}).get("_stale")
-    if stale_meta:
+    if stale_meta and chart_cell_bounds:
+        cell_x, cell_y, cell_w, cell_h = chart_cell_bounds
         as_of = stale_meta.get("as_of")
         try:
             as_of_str = datetime.fromtimestamp(as_of, tz=ZoneInfo(os.environ.get("TZ", "Europe/Berlin"))).strftime("%H:%M")
         except (TypeError, ValueError, OSError):
             as_of_str = "?"
-        stale_text = f"Netatmo-Daten von {as_of_str} – nicht aktuell"
-        stale_font = fonts.scaled(fonts.text_medium, 12)
+        stale_text = f"Stand {as_of_str}"
+        stale_font = fonts.scaled(fonts.text_bold, 16)
         stale_bbox = stale_font.getbbox(stale_text)
         stale_w = stale_bbox[2] - stale_bbox[0]
         stale_h = stale_bbox[3] - stale_bbox[1]
-        stale_x = mid_center_x - stale_w // 2
-        stale_y = wm_y - stale_h - 6
-        draw.text((stale_x, stale_y), stale_text, font=stale_font, fill=(90, 90, 90))
+        pad_x, pad_y = 10, 6
+        # The bar always widens to at least fit the text (+ padding), even if that's
+        # wider than the chart cell - centered on the cell either way. Without this,
+        # text wider than cell_w would start left of the bar and render as invisible
+        # white-on-white over the neighboring cell (this happened in practice).
+        bar_w = max(cell_w, stale_w + pad_x * 2)
+        bar_h = stale_h + pad_y * 2
+        bar_x0 = cell_x + (cell_w - bar_w) // 2
+        bar_top = cell_y + cell_h - bar_h
+        draw.rectangle([bar_x0, bar_top, bar_x0 + bar_w, cell_y + cell_h], fill=(0, 0, 0))
+        text_x = bar_x0 + (bar_w - stale_w) // 2
+        text_y = bar_top + pad_y - stale_bbox[1]
+        draw.text((text_x, text_y), stale_text, font=stale_font, fill=(255, 255, 255))
 
     # Apply device-specific post-processing
     if device_cfg.get("rotation"):
